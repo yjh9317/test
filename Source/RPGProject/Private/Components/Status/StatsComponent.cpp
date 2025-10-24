@@ -1,0 +1,404 @@
+
+#include "Components/Status/StatsComponent.h"
+#include "Character/BaseCharacter.h"
+#include "Components/Data/DataAsset_StatConfig.h"
+#include "Item/ItemBase.h"
+#include "Net/UnrealNetwork.h"
+
+UStatsComponent::UStatsComponent()
+{
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
+	
+	SetIsReplicatedByDefault(true);
+}
+
+void FStatArray::PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize)
+{
+	if (OwnerComponent)
+	{
+		OwnerComponent->OnStatsReplicated();
+	}
+}
+
+void FStatArray::PostReplicatedChange(const TArrayView<int32> ChangedIndices, int32 FinalSize)
+{
+	if (OwnerComponent)
+	{
+		OwnerComponent->OnStatsReplicated();
+	}
+}
+
+void UStatsComponent::OnStatsReplicated()
+{
+	RebuildStatCache();
+	OnStatChanged.Broadcast(FGameplayTag(), 0.0f);
+}
+
+
+void UStatsComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	// DOREPLIFETIME(UStatsComponent, Attributes);
+	// DOREPLIFETIME(UStatsComponent, MaxValueAttributes);
+	// DOREPLIFETIME(UStatsComponent, CurrentLevel);
+	// DOREPLIFETIME(UStatsComponent, CurrentExperience);
+}
+
+void UStatsComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+	OwnerCharacter = Cast<ABaseCharacter>(GetOwner());
+	
+	if (GetOwnerRole() == ROLE_Authority)
+	{
+		InitializeStats();
+	}
+	
+	RebuildStatCache();
+}
+
+
+
+void UStatsComponent::BeginDestroy()
+{
+	// 델리게이트 정리
+	OnStatChanged.Clear();
+	OnStatModified.Clear();
+	OnStatMaxValueChanged.Clear();
+	RefreshStats.Clear();
+
+	// 타이머 정리
+	if (GetWorld())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(StatRecalculationTimer);
+	}
+
+	Super::BeginDestroy();
+}
+
+void UStatsComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+
+	// 스탯 재계산이 필요한 경우
+	if (bNeedsStatRecalculation)
+	{
+		// RecalculateAllStats();
+		bNeedsStatRecalculation = false;
+	}
+}
+
+#pragma region Core_Stat_Functions
+
+float UStatsComponent::GetBaseStatValue(const FGameplayTag& StatTag) const
+{
+	if (const int32* Index = StatIndexCache.Find(StatTag))
+	{
+		return StatArray.Items[*Index].BaseValue;
+	}
+	return 0.0f;
+}
+
+float UStatsComponent::GetStatValue(const FGameplayTag& StatTag) const
+{
+	if (const int32* Index = StatIndexCache.Find(StatTag))
+	{
+		return StatArray.Items[*Index].CurrentValue;
+	}
+	return 0.0f;
+}
+
+float UStatsComponent::GetMaxStatValue(const FGameplayTag& StatTag) const
+{
+	if (const int32* Index = StatIndexCache.Find(StatTag))
+	{
+		return StatArray.Items[*Index].MaxValue;
+	}
+	return 0.0f;
+}
+
+float UStatsComponent::GetStatPercentage(const FGameplayTag& StatTag) const
+{
+	float CurrentValue = GetStatValue(StatTag);
+	float MaxValue = GetMaxStatValue(StatTag);
+	
+	if (MaxValue <= 0.0f)
+	{
+		return 0.0f;
+	}
+	
+	return FMath::Clamp(CurrentValue / MaxValue, 0.0f, 1.0f);
+}
+
+void UStatsComponent::SetStatValue(const FGameplayTag& StatTag, float Value)
+{
+	if (GetOwnerRole() != ROLE_Authority) return;
+
+	// 캐시 
+	if (int32* Index = StatIndexCache.Find(StatTag))
+	{
+		FStatEntry& Entry = StatArray.Items[*Index];
+		float OldValue = Entry.CurrentValue;
+		Entry.CurrentValue = ClampStatValue(StatTag, Value);
+        
+		StatArray.MarkItemDirty(Entry);
+		OnStatChanged.Broadcast(StatTag, Entry.CurrentValue);
+	}
+	else // 새 스탯 추가
+	{
+		FStatEntry NewEntry(StatTag, Value, Value);
+		int32 NewIndex = StatArray.Items.Add(NewEntry);
+		StatIndexCache.Add(StatTag, NewIndex);
+		StatArray.MarkArrayDirty();
+        
+		OnStatChanged.Broadcast(StatTag, Value);
+	}
+}
+
+void UStatsComponent::SetMaxStatValue(const FGameplayTag& StatTag, float MaxValue)
+{
+	if (GetOwnerRole() != ROLE_Authority) return;
+
+	for (FStatEntry& Entry : StatArray.Items)
+	{
+		if (Entry.StatTag == StatTag)
+		{
+			Entry.MaxValue = MaxValue;
+            
+			if (Entry.CurrentValue > Entry.MaxValue)
+			{
+				Entry.CurrentValue = Entry.MaxValue;
+			}
+            
+			StatArray.MarkItemDirty(Entry);
+			OnStatMaxValueChanged.Broadcast(StatTag);
+			return;
+		}
+	}
+}
+
+bool UStatsComponent::HasStat(const FGameplayTag& StatTag) const
+{
+	return StatIndexCache.Contains(StatTag);
+}
+
+TArray<FGameplayTag> UStatsComponent::GetAllStatTags() const
+{
+	TArray<FGameplayTag> Result;
+	StatIndexCache.GetKeys(Result);
+	return Result;
+}
+
+
+#pragma endregion
+
+
+void UStatsComponent::InitializeStats()
+{
+	StatArray.OwnerComponent = this;
+    
+	for (const auto& Config : DataAsset_StatConfig->StatConfigs)
+	{
+		FStatEntry NewEntry(Config.StatTag, Config.BaseValue, Config.MaxValue);
+		int32 NewIndex = StatArray.Items.Add(NewEntry);
+		StatIndexCache.Add(Config.StatTag, NewIndex);
+	}
+    
+	StatArray.MarkArrayDirty();
+	RefreshStats.Broadcast();
+}
+
+
+#pragma region Internal_Functions
+
+float UStatsComponent::ClampStatValue(const FGameplayTag& StatTag, float Value) const
+{
+	float MaxValue = GetMaxStatValue(StatTag);
+	return FMath::Clamp(Value, 0, MaxValue);
+}
+
+void UStatsComponent::OnStatValueChanged(const FGameplayTag& StatTag, float OldValue, float NewValue)
+{
+	if (!FMath::IsNearlyEqual(OldValue, NewValue, 0.01f))
+	{
+		OnStatChanged.Broadcast(StatTag, NewValue);
+		OnStatModified.Broadcast(StatTag, OldValue, NewValue);
+	}
+}
+
+void UStatsComponent::RebuildStatCache()
+{
+	StatIndexCache.Empty();
+    
+	for (int32 i = 0; i < StatArray.Items.Num(); ++i)
+	{
+		StatIndexCache.Add(StatArray.Items[i].StatTag, i);
+	}
+}
+
+#pragma endregion
+
+void UStatsComponent::AddStatModifier(const FGameplayTag& StatTag, const FStatModifier& Modifier)
+{
+	if (GetOwnerRole() != ROLE_Authority) return;
+	if (!StatTag.IsValid() || !Modifier.ModifierTag.IsValid()) return;
+
+	int32* Index = StatIndexCache.Find(StatTag);
+	if (!Index) return;
+
+	FStatEntry& Entry = StatArray.Items[*Index];
+
+	Entry.Modifiers.RemoveAll([&](const FStatModifier& Mod)
+	{
+		return Mod.ModifierTag == Modifier.ModifierTag;
+	});
+
+	FStatModifier NewModifier = Modifier;
+	NewModifier.StartTime = GetWorld()->GetTimeSeconds();
+	Entry.Modifiers.Add(NewModifier);
+
+	Entry.RecalculateValue();
+    
+	// 네트워크 복제
+	StatArray.MarkItemDirty(Entry);
+
+	if (Modifier.Duration > 0.0f)
+	{
+		SetupModifierTimer(StatTag, Modifier.Duration);
+	}
+	
+	OnStatModified.Broadcast(StatTag, Entry.BaseValue, Entry.CurrentValue);
+}
+
+void UStatsComponent::RemoveStatModifier(const FGameplayTag& StatTag, const FGameplayTag& ModifierTag)
+{
+	if (GetOwnerRole() != ROLE_Authority) return;
+
+	int32* Index = StatIndexCache.Find(StatTag);
+	if (!Index) return;
+
+	FStatEntry& Entry = StatArray.Items[*Index];
+	float OldValue = Entry.CurrentValue;
+
+	int32 RemovedCount = Entry.Modifiers.RemoveAll([&](const FStatModifier& Mod)
+	{
+		return Mod.ModifierTag == ModifierTag;
+	});
+
+	if (RemovedCount > 0)
+	{
+		Entry.RecalculateValue();
+		StatArray.MarkItemDirty(Entry);
+		OnStatModified.Broadcast(StatTag, OldValue, Entry.CurrentValue);
+	}
+}
+
+void UStatsComponent::RemoveAllModifiers(const FGameplayTag& StatTag)
+{
+	if (GetOwnerRole() != ROLE_Authority) return;
+
+	int32* Index = StatIndexCache.Find(StatTag);
+	if (!Index) return;
+
+	FStatEntry& Entry = StatArray.Items[*Index];
+    
+	if (Entry.Modifiers.Num() > 0)
+	{	
+		float OldValue = Entry.CurrentValue;
+		Entry.Modifiers.Empty();
+		Entry.RecalculateValue();
+		StatArray.MarkItemDirty(Entry);
+		OnStatModified.Broadcast(StatTag, OldValue, Entry.CurrentValue);
+	}
+
+	// 타이머 정리
+	if (FTimerHandle* Timer = ModifierTimers.Find(StatTag))
+	{
+		GetWorld()->GetTimerManager().ClearTimer(*Timer);
+		ModifierTimers.Remove(StatTag);
+	}
+}
+
+TArray<FStatModifier> UStatsComponent::GetStatModifiers(const FGameplayTag& StatTag) const
+{
+	if (const int32* Index = StatIndexCache.Find(StatTag))
+	{
+		return StatArray.Items[*Index].Modifiers;
+	}
+	return TArray<FStatModifier>();
+}
+
+void UStatsComponent::AddItemStatBonus(const FGameplayTag& StatTag, const FGameplayTag& ItemID, float BonusValue,
+	EStatModifierType ModifierType)
+{
+	FStatModifier Modifier(ItemID, BonusValue, ModifierType, -1.0f);  // 영구
+	AddStatModifier(StatTag, Modifier);
+}
+
+void UStatsComponent::RemoveItemStatBonus(const FGameplayTag& StatTag, const FGameplayTag& ItemID)
+{
+	RemoveStatModifier(StatTag, ItemID);
+}
+
+void UStatsComponent::AddTemporaryStatBuff(const FGameplayTag& StatTag, const FGameplayTag& BuffID, float BonusValue,
+	float Duration, EStatModifierType ModifierType)
+{
+	FStatModifier Modifier(BuffID, BonusValue, ModifierType, Duration);
+	AddStatModifier(StatTag, Modifier);
+}
+
+void UStatsComponent::RemoveStatBuff(const FGameplayTag& StatTag, const FGameplayTag& BuffID)
+{
+	RemoveStatModifier(StatTag, BuffID);
+}
+
+void UStatsComponent::SetupModifierTimer(const FGameplayTag& StatTag, float Duration)
+{
+	if (FTimerHandle* ExistingTimer = ModifierTimers.Find(StatTag))
+	{
+		GetWorld()->GetTimerManager().ClearTimer(*ExistingTimer);
+	}
+
+	FTimerHandle NewTimer;
+	GetWorld()->GetTimerManager().SetTimer(
+		NewTimer,
+		FTimerDelegate::CreateUObject(this, &UStatsComponent::OnModifierExpired, StatTag),
+		Duration,
+		false
+	);
+
+	ModifierTimers.Add(StatTag, NewTimer);
+}
+
+void UStatsComponent::OnModifierExpired(FGameplayTag StatTag)
+{
+	CleanupExpiredModifiers();
+}
+
+void UStatsComponent::CleanupExpiredModifiers()
+{
+	if (GetOwnerRole() != ROLE_Authority) return;
+
+	float CurrentTime = GetWorld()->GetTimeSeconds();
+
+	for (FStatEntry& Entry : StatArray.Items)
+	{
+		int32 RemovedCount = Entry.Modifiers.RemoveAll([CurrentTime](const FStatModifier& Mod)
+		{
+			return Mod.IsExpired(CurrentTime);
+		});
+
+		if (RemovedCount > 0)
+		{
+			float OldValue = Entry.CurrentValue;
+			Entry.RecalculateValue();
+			StatArray.MarkItemDirty(Entry);
+			OnStatModified.Broadcast(Entry.StatTag, OldValue, Entry.CurrentValue);
+		}
+	}
+}
+
