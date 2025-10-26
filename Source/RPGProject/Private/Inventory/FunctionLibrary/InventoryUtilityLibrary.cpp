@@ -246,18 +246,18 @@ void UInventoryUtilityLibrary::GetCraftableData(const FCraftingData& CraftingDat
 
 bool UInventoryUtilityLibrary::AreItemSlotsEqual(const FItemData& FirstItemData,const FItemData& SecondItemData)
 {
-	TArray<EItemSlot> Slots{EItemSlot::POCKET1,EItemSlot::POCKET2,EItemSlot::POCKET3,EItemSlot::POCKET4};
-
-	EItemSlot FirstItemSlot = FirstItemData.EquipmentSlot;
-	EItemSlot SecondItemSlot = SecondItemData.EquipmentSlot;
+	// TArray<EItemSlot> Slots{EItemSlot::POCKET1,EItemSlot::POCKET2,EItemSlot::POCKET3,EItemSlot::POCKET4};
+	//
+	// EItemSlot FirstItemSlot = FirstItemData.EquipmentSlot;
+	// EItemSlot SecondItemSlot = SecondItemData.EquipmentSlot;
 	
-	if((FirstItemSlot == SecondItemSlot) ||
-		 (Slots.Contains(FirstItemSlot) && Slots.Contains(SecondItemSlot)))
-	{
-		return true;	
-	}
-
-	return false;
+	// if((FirstItemSlot == SecondItemSlot) ||
+	// 	 (Slots.Contains(FirstItemSlot) && Slots.Contains(SecondItemSlot)))
+	// {
+	// 	return true;	
+	// }
+	//return false;
+	return true;
 }
 
 // bool UInventoryUtilityLibrary::FindEmptyEquipmentSlot(TMap<EItemSlot,FItemData> EquipmentData,TArray<EItemSlot> SlotsToSearch, EItemSlot DefaultSlot,EItemSlot& OutSlot)

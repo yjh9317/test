@@ -19,18 +19,22 @@ UInteractionComponent::UInteractionComponent(const FObjectInitializer& ObjectIni
 void UInteractionComponent::InitializeInteraction_Implementation(APlayerController* PlayerController)
 {
 	ControllerRef = PlayerController;
-	if(UWorld* World = GetWorld())
+	
+	if (UWorld* World = GetWorld())
 	{
+		// 기존 타이머 정리
 		World->GetTimerManager().ClearTimer(InteractionTimer);
+		
+		// 상호작용 업데이트 타이머 시작
 		World->GetTimerManager().SetTimer(
 			InteractionTimer,
 			this,
 			&UInteractionComponent::ClientUpdateInteraction,
 			InteractionDelay,
 			true,
-			1.f);
+			1.f
+		);
 	}
-	
 }
 
 void UInteractionComponent::ClientUpdateInteraction()
@@ -40,24 +44,25 @@ void UInteractionComponent::ClientUpdateInteraction()
 
 void UInteractionComponent::UpdateInteraction()
 {
+	// 현재 상호작용 대상 유효성 체크
 	UpdateCurrentInteractable();
 	
+	// 컨트롤러의 폰 가져오기
 	APawn* ControllerPawn = ControllerRef ? ControllerRef->GetPawn() : nullptr;
-	if (!ControllerPawn) return;
+	if (!ControllerPawn)
+	{
+		return;
+	}
 	ControlledPawnRef = ControllerPawn;
 
+	// 두 가지 방식으로 상호작용 대상 탐색
 	UInteractableComponent* CameraTraceResult = FindInteractableViaTrace();
 	UInteractableComponent* ForwardTraceResult = FindInteractableViaForwardTrace();
-	
 
-	// DebugDrawInteractionStatus(
-	// 	CameraTraceResult && ForwardTraceResult && CameraTraceResult == ForwardTraceResult,
-	// 	CameraTraceResult, 
-	// 	ForwardTraceResult
-	// );
-
+	// 현재 상호작용 중인 객체가 없는 경우
 	if (!CurrentInteractable)
 	{
+		// 두 트레이스가 모두 같은 대상을 감지한 경우에만 상호작용 시작
 		if (CameraTraceResult && ForwardTraceResult && 
 			CameraTraceResult == ForwardTraceResult)
 		{
@@ -74,15 +79,13 @@ void UInteractionComponent::UpdateInteraction()
 		// 둘 중 하나라도 현재 객체를 감지하면 유지
 		if (bCameraDetectsCurrent || bForwardDetectsCurrent)
 		{
-			// 상호작용 유지 (아무것도 하지 않음)
 			return;
 		}
 		
-		// 둘 다 현재 객체를 감지하지 못하는 경우
-		// (둘 다 nullptr이거나 다른 객체를 감지)
+		// 둘 다 현재 객체를 감지하지 못하는 경우 상호작용 제거
 		RemoveInteractionFromCurrent();
 		
-		// 만약 두 트레이스가 새로운 동일한 객체를 감지했다면 즉시 새 상호작용 시작
+		// 새로운 동일한 객체를 감지했다면 즉시 새 상호작용 시작
 		if (CameraTraceResult && ForwardTraceResult && 
 			CameraTraceResult == ForwardTraceResult)
 		{
@@ -93,10 +96,14 @@ void UInteractionComponent::UpdateInteraction()
 
 void UInteractionComponent::RemoveInteractionFromCurrent()
 {
-	if(!CurrentInteractable) return;
+	AActor* OwnerActor = GetOwner();
+	if(!CurrentInteractable || OwnerActor) return;
 
-	CurrentInteractable->ToggleHighlight(false,ControllerRef);
-	if(IObjectInteraction* ObjectInteraction = Cast<IObjectInteraction>(GetOwner()))
+	// 하이라이트 제거
+	CurrentInteractable->ToggleHighlight(false, ControllerRef);
+	
+	// ObjectInteraction 인터페이스를 통해 종료 처리
+	if (IObjectInteraction* ObjectInteraction = Cast<IObjectInteraction>(OwnerActor))
 	{
 		ObjectInteraction->EndInteractionWithObject(CurrentInteractable);
 		CurrentInteractable = nullptr;
@@ -106,47 +113,52 @@ void UInteractionComponent::RemoveInteractionFromCurrent()
 
 void UInteractionComponent::AssignInteractionToLocal(UInteractableComponent* InteractableComponent)
 {
-	if(InteractableComponent == CurrentInteractable)
+	// 이미 현재 상호작용 중인 대상과 동일한 경우 무시
+	if (InteractableComponent == CurrentInteractable)
 	{
 		return;		
 	}
+	
+	// 기존 상호작용 제거
 	RemoveInteractionFromCurrent();
 
-	InteractableComponent->ToggleHighlight(true,ControllerRef);
+	// 새로운 상호작용 대상 설정
+	InteractableComponent->ToggleHighlight(true, ControllerRef);
 	CurrentInteractable = InteractableComponent;
 	OnNewInteractableAssigned.Broadcast(CurrentInteractable);
 }
 
 UInteractableComponent* UInteractionComponent::FindInteractableViaForwardTrace()
 {
-	if(!ControlledPawnRef || !GetWorld())
+	if (!ControlledPawnRef || !GetWorld())
 	{
-		return false;
+		return nullptr;
 	}
 
+	// 폰의 전방 벡터 기반 트레이스
 	FVector PawnLocation = ControlledPawnRef->GetActorLocation();
 	FVector PawnForward = ControlledPawnRef->GetActorForwardVector();
 	FVector StartLocation = PawnLocation;
 	FVector EndLocation = PawnLocation + PawnForward * OwnerTraceLength;
 
-	TArray<AActor*> IgnoredActors{ControlledPawnRef};
-	TArray<FHitResult> OutHits{};
+	TArray<AActor*> IgnoredActors{ ControlledPawnRef };
+	TArray<FHitResult> OutHits;
 	
-	bool bIsHit = PerformInteractionTrace(OutHits,StartLocation,EndLocation,IgnoredActors);
-
-	UInteractableComponent* FoundInteractableComp = nullptr;
-	
-	if (!bIsHit)
+	if (!PerformInteractionTrace(OutHits, StartLocation, EndLocation, IgnoredActors))
 	{
 		return nullptr;
 	}
 
+	// 히트한 액터들 중 유효한 상호작용 컴포넌트 찾기
 	for (const FHitResult& HitResult : OutHits)
 	{
 		AActor* HitActor = HitResult.GetActor();
-		if (!HitActor) continue;
+		if (!HitActor)
+		{
+			continue;
+		}
 
-		FoundInteractableComp = HitActor->FindComponentByClass<UInteractableComponent>();
+		UInteractableComponent* FoundInteractableComp = HitActor->FindComponentByClass<UInteractableComponent>();
 		if (FoundInteractableComp && IsValidInteractable(FoundInteractableComp))
 		{
 			return FoundInteractableComp;
@@ -158,14 +170,16 @@ UInteractableComponent* UInteractionComponent::FindInteractableViaForwardTrace()
 
 void UInteractionComponent::UpdateCurrentInteractable()
 {
-	if(nullptr == CurrentInteractable)
+	if (!CurrentInteractable)
 	{
 		return;
 	}
 	
+	// 상호작용 인터페이스 유효성 체크
 	if(IInteractableInterface* InteractableInterface = Cast<IInteractableInterface>(CurrentInteractable->GetOwner()))
 	{
-		if(!InteractableInterface->Execute_CanBeInteractedWith(CurrentInteractable->GetOwner()))
+		// 더 이상 상호작용 불가능한 경우 제거
+		if (InteractableInterface->CanBeInteractedWith())
 		{
 			RemoveInteractionFromCurrent();
 		}
@@ -175,18 +189,10 @@ void UInteractionComponent::UpdateCurrentInteractable()
 bool UInteractionComponent::PerformInteractionTrace(TArray<FHitResult>& OutHits, const FVector& StartLocation,
 	const FVector& EndLocation ,const TArray<AActor*>& IgnoredActors, float CapsuleRadius, float CapsuleHalfHeight)
 {
-	// Collision Query Parameters 설정
-	FCollisionQueryParams CollisionQueryParams;
-	CollisionQueryParams.bTraceComplex = false;
-	CollisionQueryParams.bReturnPhysicalMaterial = false;
-
-	for(const auto& Actor : IgnoredActors)
-	{
-		CollisionQueryParams.AddIgnoredActor(Actor);
-	}
+	// 상호작용 가능한 오브젝트 타입 설정
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypesToQuery;
 	ObjectTypesToQuery.Add(UEngineTypes::ConvertToObjectType(ECO_Interactable));
-
+	
 	bool bIsHit = UKismetSystemLibrary::CapsuleTraceMultiForObjects(
 		GetWorld(),
 		StartLocation,
@@ -209,9 +215,14 @@ bool UInteractionComponent::PerformInteractionTrace(TArray<FHitResult>& OutHits,
 
 UInteractableComponent* UInteractionComponent::FindInteractableViaTrace()
 {
+	// 카메라 컴포넌트 가져오기
 	UCameraComponent* PlayerCamera = ControlledPawnRef->FindComponentByClass<UCameraComponent>();
-	if (!PlayerCamera) return nullptr;
+	if (!PlayerCamera)
+	{
+		return nullptr;
+	}
 
+	// 카메라 시선 방향 기반 트레이스
 	const FVector PawnLocation = ControlledPawnRef->GetActorLocation();
 	const FVector CameraForward = PlayerCamera->GetForwardVector();
 	const FVector StartLocation = PawnLocation + FVector(0.f, 0.f, InteractionDistance);
@@ -219,18 +230,23 @@ UInteractableComponent* UInteractionComponent::FindInteractableViaTrace()
 
 	TArray<FHitResult> OutHits;
 	const TArray<AActor*> IgnoredActors{ ControlledPawnRef };
-	if (!PerformInteractionTrace(OutHits, StartLocation, EndLocation, IgnoredActors,35.f,0.f))
+	
+	// 카메라 트레이스는 좁은 캡슐 사용 (정확한 조준)
+	if (!PerformInteractionTrace(OutHits, StartLocation, EndLocation, IgnoredActors, 35.f, 0.f))
 	{
 		return nullptr;
 	}
 
+	// 히트한 액터들 중 유효한 상호작용 컴포넌트 찾기
 	for (const FHitResult& Hit : OutHits)
 	{
 		AActor* HitActor = Hit.GetActor();
-		if (!IsValid(HitActor)) continue;
+		if (!IsValid(HitActor))
+		{
+			continue;
+		}
 
-		UInteractableComponent* FoundComponent  = HitActor->FindComponentByClass<UInteractableComponent>();
-    
+		UInteractableComponent* FoundComponent = HitActor->FindComponentByClass<UInteractableComponent>();
 		if (FoundComponent && IsValidInteractable(FoundComponent))
 		{
 			return FoundComponent;
@@ -242,19 +258,19 @@ UInteractableComponent* UInteractionComponent::FindInteractableViaTrace()
 
 bool UInteractionComponent::IsValidInteractable(UInteractableComponent* Component) const
 {
-	if(!Component)
+	if (!Component)
 	{
-		//DebugHeader::LogWarning(TEXT("IsValidInteractable: Component is not valid."));
 		return false;
 	}
 	AActor* OwnerActor = Component->GetOwner();
-	if (!OwnerActor || !ControlledPawnRef)
+	IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(OwnerActor);
+	if (!OwnerActor || !ControlledPawnRef || !InteractableOwner)
 	{
 		return false;
 	}
 
 	bool bInterface = OwnerActor->GetClass()->ImplementsInterface(UInteractableInterface::StaticClass());
-	bool bCanInteraction = IInteractableInterface::Execute_CanBeInteractedWith(OwnerActor);
+	bool bCanInteraction = InteractableOwner->CanBeInteractedWith();
 	if (!bInterface || !bCanInteraction)
 	{
 		return false;
@@ -270,54 +286,61 @@ bool UInteractionComponent::IsValidInteractable(UInteractableComponent* Componen
 }
 
 
+
+// ====================
+// 디버그
+// ====================
+
 #if WITH_EDITOR
-	void UInteractionComponent::DebugDrawInteractionStatus(bool bBothConditionsMet, 
-		UInteractableComponent* CameraTraceResult, 
-		UInteractableComponent* ForwardTraceResult) const
+void UInteractionComponent::DebugDrawInteractionStatus(
+	bool bBothConditionsMet, 
+	UInteractableComponent* CameraTraceResult, 
+	UInteractableComponent* ForwardTraceResult) const
+{
+	if (DebugTrace != EDrawDebugTrace::None && GEngine)
 	{
-		if (DebugTrace != EDrawDebugTrace::None && GEngine)
+		// 현재 상태 텍스트 생성
+		FString CurrentStatus = CurrentInteractable ? 
+			FString::Printf(TEXT("Current: %s"), *CurrentInteractable->GetOwner()->GetName()) : 
+			TEXT("Current: None");
+	
+		FString CameraStatus = CameraTraceResult ? 
+			FString::Printf(TEXT("Camera: %s"), *CameraTraceResult->GetOwner()->GetName()) : 
+			TEXT("Camera: None");
+	
+		FString ForwardStatus = ForwardTraceResult ? 
+			FString::Printf(TEXT("Forward: %s"), *ForwardTraceResult->GetOwner()->GetName()) : 
+			TEXT("Forward: None");
+	
+		FString DebugMessage = FString::Printf(
+			TEXT("%s | %s | %s | Both Met: %s"),
+			*CurrentStatus,
+			*CameraStatus,
+			*ForwardStatus,
+			bBothConditionsMet ? TEXT("YES") : TEXT("NO")
+		);
+	
+		// 상태에 따라 색상 결정
+		FColor MessageColor = FColor::Yellow;
+		if (CurrentInteractable)
 		{
-			FString CurrentStatus = CurrentInteractable ? 
-				FString::Printf(TEXT("Current: %s"), *CurrentInteractable->GetOwner()->GetName()) : 
-				TEXT("Current: None");
-		
-			FString CameraStatus = CameraTraceResult ? 
-				FString::Printf(TEXT("Camera: %s"), *CameraTraceResult->GetOwner()->GetName()) : 
-				TEXT("Camera: None");
-		
-			FString ForwardStatus = ForwardTraceResult ? 
-				FString::Printf(TEXT("Forward: %s"), *ForwardTraceResult->GetOwner()->GetName()) : 
-				TEXT("Forward: None");
-		
-			FString DebugMessage = FString::Printf(
-				TEXT("%s | %s | %s | Both Met: %s"),
-				*CurrentStatus,
-				*CameraStatus,
-				*ForwardStatus,
-				bBothConditionsMet ? TEXT("YES") : TEXT("NO")
-			);
-		
-			// 상태에 따라 색상 결정
-			FColor MessageColor = FColor::Yellow;
-			if (CurrentInteractable)
-			{
-				// 상호작용 중
-				bool bMaintained = (CameraTraceResult == CurrentInteractable) || 
-								  (ForwardTraceResult == CurrentInteractable);
-				MessageColor = bMaintained ? FColor::Green : FColor::Orange;
-			}
-			else if (bBothConditionsMet)
-			{
-				// 새로운 상호작용 가능
-				MessageColor = FColor::Cyan;
-			}
-			else
-			{
-				// 상호작용 불가
-				MessageColor = FColor::Red;
-			}
-		
-			GEngine->AddOnScreenDebugMessage(-1, 0.1f, MessageColor, DebugMessage);
+			// 상호작용 유지 여부에 따른 색상
+			bool bMaintained = (CameraTraceResult == CurrentInteractable) || 
+							  (ForwardTraceResult == CurrentInteractable);
+			MessageColor = bMaintained ? FColor::Green : FColor::Orange;
 		}
-#endif
+		else if (bBothConditionsMet)
+		{
+			// 새로운 상호작용 가능
+			MessageColor = FColor::Cyan;
+		}
+		else
+		{
+			// 상호작용 불가
+			MessageColor = FColor::Red;
+		}
+	
+		GEngine->AddOnScreenDebugMessage(-1, 0.1f, MessageColor, DebugMessage);
+	}
 }
+#endif

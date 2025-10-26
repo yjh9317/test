@@ -48,7 +48,7 @@ class RPGPROJECT_API UDataAsset_StatConfig : public UDataAsset
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (TitleProperty = "AttributeTag"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (TitleProperty = "StatTag"))
 	TArray<FStatConfig> StatConfigs;
 
 };

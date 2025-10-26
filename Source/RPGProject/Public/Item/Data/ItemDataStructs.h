@@ -29,39 +29,6 @@ enum class EAdditionalBuffEffect: uint8
 	NightVision
 };
 
-// -----------------------------------
-// Stat
-// -----------------------------------
-
-
-UENUM(BlueprintType)
-enum class EStatCategory: uint8
-{
-	None,
-	Health,
-	MaxHealth,
-	Stamina,
-	MaxStamina,
-	Armor,
-	Damage,
-	AttackSpeed
-};
-
-// -----------------------------------
-// Level
-// -----------------------------------
-USTRUCT(BlueprintType)
-struct FLevelingSystem: public FTableRowBase
-{
-	GENERATED_USTRUCT_BODY()
-	
-	UPROPERTY(EditDefaultsOnly)
-	int32 Level = 0;
-
-	UPROPERTY(EditDefaultsOnly)
-	float NeededExp = 0.f;
-};
-
 
 
 // -----------------------------------
@@ -80,14 +47,11 @@ enum class EItemSlot: uint8
 	BOOTS,
 	WEAPON,
 	SHIELD,
-	POCKET1,
-	POCKET2,
-	POCKET3,
-	POCKET4,
 };
 
-ENUM_RANGE_BY_COUNT(EItemSlot, EItemSlot::POCKET4);
-
+ENUM_RANGE_BY_COUNT(EItemSlot, EItemSlot::SHIELD);
+// 언리얼 엔진 C++에서 UENUM으로 선언된 열거형(enum)을 **범위 기반 for 루프(range-based for loop)**로 순회할 수 있도록 도와주는 매크로
+// TEnumRange<T>를 사용하여 해당 열거형을 for 루프로 순회 가능
 
 UENUM(BlueprintType)
 enum class EItemRemoveType: uint8
@@ -119,7 +83,6 @@ enum class EItemRarity : uint8
 	Usable
 };
 
-// UMETA( DisplayName = "")
 UENUM(BlueprintType)
 enum class EItemType : uint8
 {
@@ -159,53 +122,6 @@ struct FItemStatRow
 	float Value;
 };
 
-USTRUCT(BlueprintType)
-struct FItemStatistics
-{
-	GENERATED_USTRUCT_BODY()
-
-	UPROPERTY(EditAnywhere)
-	float BuyValue;
-	
-	UPROPERTY(EditAnywhere)
-	float SellValue;
-};
-
-USTRUCT(BlueprintType)
-struct FItemWidgetData
-{
-	GENERATED_USTRUCT_BODY()
-	
-	UPROPERTY(EditAnywhere)
-	FText Name;
-
-	UPROPERTY(EditAnywhere)
-	FText Description;
-
-	UPROPERTY(EditAnywhere)
-	FText InteractionText;
-
-	UPROPERTY(EditAnywhere)
-	FText UsageText;
-
-	UPROPERTY(EditAnywhere)
-	UTexture2D* Icon;
-};
-
-USTRUCT(BlueprintType)
-struct FItemNumericData
-{
-	GENERATED_USTRUCT_BODY()
-
-	UPROPERTY(EditAnywhere)
-	float Weight;
-
-	UPROPERTY(EditAnywhere)
-	int32 MaxStackSize;
-
-	UPROPERTY(EditAnywhere)
-	bool bIsStackable;
-};
 
 USTRUCT(BlueprintType)
 struct FItemData : public FTableRowBase

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UI/RPGUserWidget.h"
+#include "Blueprint/UserWidget.h"
 #include "MinimapWidget.generated.h"
 
 class UMinimapDistantMarkerWidget;
@@ -80,7 +80,7 @@ struct FMinimapInitData
 };
 
 UCLASS()
-class RPGPROJECT_API UMinimapWidget : public URPGUserWidget
+class RPGPROJECT_API UMinimapWidget : public UUserWidget
 {
 	GENERATED_BODY()
 
@@ -212,7 +212,7 @@ protected:
 	TSubclassOf<UMinimapDistantMarkerWidget> MinimapDistantMarkerClass;
 
 protected:
-	virtual void InitializeWidget() override;
+
 	virtual void NativePreConstruct() override;
 	void HandleFadeInMinimap(float FadeInSpeedPointer = 3.f,float FadeInSpeedMap = 4.f);
 	void HandleFadeOutMinimap(float FadeInSpeedPointer = 3.f,float FadeInSpeedMap = 4.f);

@@ -21,105 +21,120 @@ void ABaseItemPickup::BeginPlay()
 	Super::BeginPlay();
 	MulticastSetPhysicsSimulation();
 
-	StaticMesh->CanCharacterStepUpOn = ECB_No;
 	InteractableArea->SetCollisionObjectType(ECO_Interactable);
 }
 
 void ABaseItemPickup::Destroyed()
 {
-	if(InteractableComponent)
+	Super::Destroyed();
+	
+	if (!InteractableComponent)
 	{
-		InteractableComponent->ToggleInteractionWidget(false);
+		return;
+	}
 
-		if(InteractableComponent->ShowLootBar && localInteractor)
+	InteractableComponent->SetInteractionWidgetVisible(false);
+
+	if (InteractableComponent->bShowLootBar && LocalInteractor)
+	{
+		IComponentManager* ComponentManager = Cast<IComponentManager>(LocalInteractor);
+		if (ComponentManager)
 		{
-			IComponentManager* ComponentManager = Cast<IComponentManager>(localInteractor);
-			if(ComponentManager)
+			UInventoryComponent* LocalInventoryComp = ComponentManager->GetInventoryComponent();
+			LocalInventoryComp->CloseLootBarWidget();
+		}
+	}
+
+}
+
+void ABaseItemPickup::RemoveInteraction()
+{
+	if (!InteractableComponent)
+	{
+		return;
+	}
+
+	InteractableComponent->SetInteractionWidgetVisible(false);
+
+	if (InteractableComponent->bShowLootBar && LocalInteractor)
+	{
+		if (IComponentManager* ComponentManager = Cast<IComponentManager>(LocalInteractor))
+		{
+			if (UInventoryComponent* LocalInventoryComp = ComponentManager->GetInventoryComponent())
 			{
-				UInventoryComponent* LocalInventoryComp = ComponentManager->GetInventoryComponent();
 				LocalInventoryComp->CloseLootBarWidget();
 			}
 		}
 	}
 }
 
-void ABaseItemPickup::RemoveInteraction_Implementation()
+void ABaseItemPickup::ExecuteInteraction(AActor* Interactor)
 {
-	if(InteractableComponent)
+	if (Interactor)
 	{
-		InteractableComponent->ToggleInteractionWidget(false);
-
-		if(InteractableComponent->ShowLootBar && localInteractor)
-		{
-			IComponentManager* ComponentManager = Cast<IComponentManager>(localInteractor);
-			if(ComponentManager)
-			{
-				UInventoryComponent* LocalInventoryComp = ComponentManager->GetInventoryComponent();
-				LocalInventoryComp->CloseLootBarWidget();
-			}
-		}
+		ServerInteractor = Interactor;
 	}
 }
 
-void ABaseItemPickup::Interaction_Implementation(AActor* Interactor)
+
+void ABaseItemPickup::EndInteraction(AActor* Interactor)
 {
-	if(Interactor)
+	if (Interactor)
 	{
-		interactor = Interactor;
+		ServerInteractor = Interactor;
 	}
 }
 
-void ABaseItemPickup::EndInteraction_Implementation(AActor* Interactor)
+void ABaseItemPickup::ClientBeginInteraction(AActor* Interactor)
 {
-	if(Interactor)
+	if (Interactor)
 	{
-		interactor = Interactor;
+		LocalInteractor = Interactor;
 	}
-}
 
-void ABaseItemPickup::ClientStartInteraction_Implementation(AActor* Interactor)
-{
-	if(Interactor)
+	IComponentManager* ComponentManager = Cast<IComponentManager>(LocalInteractor);
+	if (!ComponentManager)
 	{
-		localInteractor = Interactor;
+		return;
 	}
-	if(InteractableComponent->ShowLootBar && localInteractor)
+
+	UInventoryComponent* LocalInventoryComp = ComponentManager->GetInventoryComponent();
+	if (!LocalInventoryComp)
 	{
-		InteractableComponent->ToggleInteractionWidget(false);
-		IComponentManager* ComponentManager = Cast<IComponentManager>(localInteractor);
-		if(ComponentManager)
-		{
-			if(UInventoryComponent* LocalInventoryComp = ComponentManager->GetInventoryComponent())
-			{
-				LocalInventoryComp->OpenLootBarWidget();
-			}
-		}
+		return;
 	}
+
+	// Loot Bar 모드: UI 창 열기
+	if (InteractableComponent && InteractableComponent->bShowLootBar)
+	{
+		// 상호작용 프롬프트 위젯 숨기기 (Loot UI로 대체)
+		InteractableComponent->SetInteractionWidgetVisible(false);
+		// Loot Bar UI 열기
+		LocalInventoryComp->OpenLootBarWidget();
+	}
+	// 즉시 픽업 모드: 모든 아이템 자동 수집
 	else
 	{
-		IComponentManager* ComponentManager = Cast<IComponentManager>(localInteractor);
-		if(ComponentManager)
-		{
-			if(UInventoryComponent* LocalInventoryComp = ComponentManager->GetInventoryComponent())
-			{
-				LocalInventoryComp->Server_TakeAllItems(InventoryCoreComponent,localInteractor);
-			}
-		}
+		// 서버에 모든 아이템 수집 요청
+		LocalInventoryComp->Server_TakeAllItems(InventoryCoreComponent, LocalInteractor);
 	}
 }
 
-void ABaseItemPickup::ClientEndInteraction_Implementation(AActor* Interactor)
+
+void ABaseItemPickup::ClientEndInteraction(AActor* Interactor)
 {
-	if(Interactor)
+	// 클라이언트 측 Interactor 저장
+	if (Interactor)
 	{
-		localInteractor = Interactor;
+		LocalInteractor = Interactor;
 	}
-	if(InteractableComponent->ShowLootBar && localInteractor)
+
+	// Loot Bar가 열려있으면 닫기
+	if (InteractableComponent && InteractableComponent->bShowLootBar && LocalInteractor)
 	{
-		IComponentManager* ComponentManager = Cast<IComponentManager>(localInteractor);
-		if(ComponentManager)
+		if (IComponentManager* ComponentManager = Cast<IComponentManager>(LocalInteractor))
 		{
-			if(UInventoryComponent* LocalInventoryComp = ComponentManager->GetInventoryComponent())
+			if (UInventoryComponent* LocalInventoryComp = ComponentManager->GetInventoryComponent())
 			{
 				LocalInventoryComp->CloseLootBarWidget();
 			}
@@ -127,9 +142,9 @@ void ABaseItemPickup::ClientEndInteraction_Implementation(AActor* Interactor)
 	}
 }
 
-bool ABaseItemPickup::CanBeInteractedWith_Implementation()
+bool ABaseItemPickup::CanBeInteractedWith()
 {
-	if(InteractableComponent)
+	if (InteractableComponent)
 	{
 		return InteractableComponent->bIsInteractable;
 	}

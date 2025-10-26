@@ -9,7 +9,6 @@
 
 
 enum class EAdditionalBuffEffect : uint8;
-enum class EStatCategory : uint8;
 enum class EBuffEffectCategory : uint8;
 
 UCLASS(Abstract)

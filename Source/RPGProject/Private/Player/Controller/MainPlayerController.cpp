@@ -35,17 +35,21 @@ void AMainPlayerController::BeginPlay()
 	MainCharacter = Cast<AMainCharacter>(GetOwner());
 	MainHUD = Cast<AMainHUD>(GetHUD());
 
-	InteractionComp->OnNewInteractableAssigned.AddLambda([this](UInteractableComponent* Comp)
+	//checkf(MainCharacter, TEXT("AMainPlayerController::BeginPlay : MainCharacter is nullptr"));
+	//checkf(MainHUD, TEXT("AMainPlayerController::BeginPlay : MainHUD is nullptr"));
+
+	if (InteractionComp)
 	{
-		if (Comp)
+		InteractionComp->OnNewInteractableAssigned.AddLambda([this](UInteractableComponent* Comp)
 		{
 			CurrentInteractable = Comp;
-		}
-	});
-	InteractionComp->OnRemovedCurrentInteractable.AddLambda([this]()
-	{
-		CurrentInteractable = nullptr;	
-	});
+		});
+		
+		InteractionComp->OnRemovedCurrentInteractable.AddLambda([this]()
+		{
+			CurrentInteractable = nullptr;	
+		});
+	}
 	
 	if(PlayerWidgetComponent)
 	{
@@ -211,6 +215,22 @@ void AMainPlayerController::OpenNewWidget(EWidgetType NewType)
 		break;
 	}
 }
+
+EWidgetType AMainPlayerController::GetActiveTab() const
+{
+	return IWidgetManager::GetActiveTab();
+}
+
+EWidgetType AMainPlayerController::GetActiveWidget() const
+{
+	return IWidgetManager::GetActiveWidget();
+}
+
+EWidgetPopup AMainPlayerController::GetActivePopup() const
+{
+	return IWidgetManager::GetActivePopup();
+}
+
 void AMainPlayerController::StartPlayerCapture()
 {
 	if(PlayerCaptureActor)
@@ -227,9 +247,7 @@ void AMainPlayerController::StopPlayerCapture()
 	}
 }
 
-#pragma endregion 
 
-#pragma region Component
 UInventoryComponent* AMainPlayerController::GetInventoryComponent()  
 {
 	return InventoryComponent;
@@ -259,49 +277,63 @@ UInputBufferComponent* AMainPlayerController::GetInputBufferComponent()
 	return InputBufferComponent;
 }
 
-#pragma endregion 
 
-#pragma region ObjectInteraction
 
 void AMainPlayerController::StartInteractionWithObject(UInteractableComponent* InteractableComp)
 {
-	if(!InteractableComp) return;
-	ServerStartInteractionWithObject(InteractableComp);
-	ClientStartInteractionWithObject(InteractableComp);
+	if (!InteractableComp)
+	{
+		return;
+	}
+	
+	ServerStartInteractionWithObject(InteractableComp); // 서버에서 실행 + 아이템 정보 동기화 + 플레이어를 뷰어 목록에 추가
+	ClientStartInteractionWithObject(InteractableComp); // UI 업데이트
 }
 
 void AMainPlayerController::EndInteractionWithObject(UInteractableComponent* InteractableComp)
 {
-	if(!InteractableComp) return;
-	ServerEndInteractionWithObject(InteractableComp);
-	ClientEndInteractionWithObject(InteractableComp);
+	if (!InteractableComp)
+	{
+		return;
+	}
+	
+	ServerEndInteractionWithObject(InteractableComp); // 서버에서 실행 + 뷰어 목록에서 제거 + EndInteraction 호출
+	ClientEndInteractionWithObject(InteractableComp); // 클라이언트 정리
 }
 
 void AMainPlayerController::RemoveInteractionWithObject(UInteractableComponent* InteractableComp)
 {
-	if(!InteractableComp) return;
-	ServerRemoveInteractionWithObject(InteractableComp);
-	ClientRemoveInteractionWithObject(InteractableComp);
+	if (!InteractableComp)
+	{
+		return;
+	}
+	
+	ServerRemoveInteractionWithObject(InteractableComp); // 복제된 액터만 RemoveInteraction
+	ClientRemoveInteractionWithObject(InteractableComp); // 클라이언트 정리
 }
 
 void AMainPlayerController::InitializeInteractionWithObject(UInteractableComponent* InteractableComp)
 {
-	if(!InteractableComp) return;
+	if (!InteractableComp)
+	{
+		return;
+	}
+	
 	ClientInitializeInteractionWithObject(InteractableComp);
 }
 
 AActor* AMainPlayerController::GetCurrentInteractableObject()
 {
-	if(CurrentInteractable)
+	if (CurrentInteractable)
 	{
 		return CurrentInteractable->GetOwner();
 	}
 	return nullptr;
 }
 
-#pragma endregion
-
-#pragma region Internal
+// ====================
+// 네트워크 RPC - 상호작용 시작
+// ====================
 
 void AMainPlayerController::ServerStartInteractionWithObject_Implementation(UInteractableComponent* InteractableComp)
 {
@@ -310,81 +342,93 @@ void AMainPlayerController::ServerStartInteractionWithObject_Implementation(UInt
 
 void AMainPlayerController::ClientStartInteractionWithObject_Implementation(UInteractableComponent* InteractableComp)
 {
-	if(!InteractableComp) return;
+	if (!InteractableComp)
+	{
+		return;
+	}
+	
 	InteractableComp->ClientInteraction(this);
 }
 
 void AMainPlayerController::StartInteraction(UInteractableComponent* InteractableComp)
 {
-	// 1. 핵심 파라미터 유효성 검사 (Guard Clause)
-	// 상호작용할 컴포넌트 자체가 유효하지 않으면 즉시 함수를 종료합니다.
+	// 1. 유효성 검사
 	if (!InteractableComp)
 	{
 		return;
 	}
 
-	// 2. 컴포넌트의 소유 액터 가져오기
-	// InteractableComp가 유효하므로 GetOwner()는 안전합니다.
+	// 2. 상호작용 대상 액터 가져오기
 	AActor* const InteractingActor = InteractableComp->GetOwner();
 	if (!InteractingActor)
 	{
 		return;
 	}
     
-	// 3. 필요한 다른 컴포넌트 및 객체 가져오기
+	// 3. 인벤토리 코어 컴포넌트 가져오기
 	UInventoryCoreComponent* const InventoryCore = InteractingActor->FindComponentByClass<UInventoryCoreComponent>();
 	if (!InventoryCore)
 	{
 		return;
 	}
 
-	APlayerState* CurrentPlayerState = GetPlayerState<APlayerState>();
+	// 4. 플레이어 스테이트 가져오기
+	APlayerState* const CurrentPlayerState = GetPlayerState<APlayerState>();
 	if (!CurrentPlayerState)
 	{
 		return;
 	}
 
-	// 4. 다른 클라이언트들에게 이 인벤토리의 아이템 정보를 업데이트하도록 요청합니다.
+	// 5. 다른 클라이언트들에게 아이템 정보 업데이트
 	InventoryComponent->Server_UpdateItems(InteractingActor);
     
-	// 5. 이 인벤토리를 보고 있는 '뷰어' 목록에 현재 플레이어를 추가합니다.
+	// 6. 뷰어 목록에 현재 플레이어 추가
 	InventoryComponent->AddViewer(CurrentPlayerState, InventoryCore);
-	
 }
+
+// ====================
+// 네트워크 RPC - 상호작용 초기화
+// ====================
 
 void AMainPlayerController::ServerEndInteractionWithObject_Implementation(UInteractableComponent* InteractableComponent)
 {
 	EndInteraction(InteractableComponent);
 }
 
-void AMainPlayerController::ClientInitializeInteractionWithObject_Implementation(
-	UInteractableComponent* InteractableComp)
+void AMainPlayerController::ClientInitializeInteractionWithObject_Implementation(UInteractableComponent* InteractableComp)
 {
 	InitializeInteraction(InteractableComp);
 }
 
 void AMainPlayerController::InitializeInteraction(UInteractableComponent* InteractableComp)
 {
-	if(!InteractableComp)
+	if (!InteractableComp)
 	{
 		return;
 	}
+	
 	InteractableComp->OnPreInteraction(this);
 }
 
+// ====================
+// 네트워크 RPC - 상호작용 종료
+// ====================
 
-void AMainPlayerController::ServerRemoveInteractionWithObject_Implementation(
-	UInteractableComponent* InteractableComp)
+void AMainPlayerController::ServerRemoveInteractionWithObject_Implementation(UInteractableComponent* InteractableComp)
 {
 	RemoveInteraction(InteractableComp);	
 }
 
-void AMainPlayerController::ClientRemoveInteractionWithObject_Implementation(
-	UInteractableComponent* InteractableComp)
+void AMainPlayerController::ClientRemoveInteractionWithObject_Implementation(UInteractableComponent* InteractableComp)
 {
-	if(!InteractableComp) return;
+	if (!InteractableComp)
+	{
+		return;
+	}
+	
 	InteractableComp->ClientRemoveInteraction();
 }
+
 
 void AMainPlayerController::RemoveInteraction(UInteractableComponent* InteractableComp)
 {
@@ -393,13 +437,18 @@ void AMainPlayerController::RemoveInteraction(UInteractableComponent* Interactab
 		return;
 	}
 
-	AActor* LocalActor = InteractableComp->GetOwner();
+	AActor* const LocalActor = InteractableComp->GetOwner();
 	if(!LocalActor || !LocalActor->GetIsReplicated())
 	{
 		return;
 	}
-	
-	IInteractableInterface::Execute_RemoveInteraction(InteractableComp);
+
+	IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(InteractableComp);
+
+	if (InteractableOwner)
+	{
+		InteractableOwner->RemoveInteraction();
+	}
 }
 void AMainPlayerController::ClientEndInteractionWithObject_Implementation(UInteractableComponent* InteractableComp)
 {
@@ -407,8 +456,11 @@ void AMainPlayerController::ClientEndInteractionWithObject_Implementation(UInter
 	{
 		return;
 	}
-	
-	IInteractableInterface::Execute_ClientEndInteraction(InteractableComp,this);
+	IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(InteractableComp);
+	if(InteractableOwner)
+	{
+		InteractableOwner->ClientEndInteraction(this);
+	}
 }
 
 void AMainPlayerController::EndInteraction(UInteractableComponent* InteractableComp)
@@ -439,6 +491,15 @@ void AMainPlayerController::EndInteraction(UInteractableComponent* InteractableC
 		return;
 	}
 	InventoryComponent->RemoveViewer(CurrentPlayerState,InventoryCore);
-	IInteractableInterface::Execute_EndInteraction(InteractableComp,this);
+
+	IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(InteractableComp);
+
+	if (!InteractableOwner)
+	{
+		DebugHeader::LogWarning(TEXT("EndInteraction : InteractableOwner is nullptr"));
+		return;
+	}
+	InteractableOwner->EndInteraction(this);
 }
-#pragma endregion 
+ 
+

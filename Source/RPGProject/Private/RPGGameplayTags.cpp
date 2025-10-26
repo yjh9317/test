@@ -4,38 +4,48 @@ namespace RPGGameplayTags
 {
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Alive, "Character.State.Alive");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Dead, "Character.State.Dead");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Spawning, "Character.State.Spawning");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Despawning, "Character.State.Despawning");
+
+	// Vital Stats
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Vital_Health, "Character.Stat.Vital.Health");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Vital_MaxHealth, "Character.Stat.Vital.MaxHealth");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Vital_Mana, "Character.Stat.Vital.Mana");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Vital_MaxMana, "Character.Stat.Vital.MaxMana");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Vital_Stamina, "Character.Stat.Vital.Stamina");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Vital_MaxStamina, "Character.Stat.Vital.MaxStamina");
+
+	// Primary Stats
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Primary_Strength, "Character.Stat.Attribute.Strength");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Primary_Intelligence, "Character.Stat.Attribute.Intelligence");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Primary_Dexterity, "Character.Stat.Attribute.Dexterity");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Primary_Constitution, "Character.Stat.Attribute.Constitution");
+
+	// Secondary Stats
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Secondary_AttackPower, "Character.Stat.Secondary.AttackPower");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Secondary_MagicPower, "Character.Stat.Secondary.MagicPower");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Secondary_Defense, "Character.Stat.Secondary.Defense");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Secondary_MagicDefense, "Character.Stat.Secondary.MagicDefense");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Secondary_CriticalChance, "Character.Stat.Secondary.CriticalChance");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Secondary_CriticalDamage, "Character.Stat.Secondary.CriticalDamage");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Secondary_AttackSpeed, "Character.Stat.Secondary.AttackSpeed");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Secondary_MovementSpeed, "Character.Stat.Secondary.MovementSpeed");
+
+	// Progression
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Progression_Level, "Character.Stat.Progression.Level");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Progression_Experience, "Character.Stat.Progression.Experience");
+	UE_DEFINE_GAMEPLAY_TAG(Character_Stat_Progression_SkillPoints, "Character.Stat.Progression.SkillPoints");
+	
+
 
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Idle, "Character.State.Movement.Idle");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Walking, "Character.State.Movement.Walking");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Running, "Character.State.Movement.Running");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Sprinting, "Character.State.Movement.Sprinting");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Jumping, "Character.State.Movement.Jumping");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Falling, "Character.State.Movement.Falling");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Landing, "Character.State.Movement.Landing");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_HardLanding, "Character.State.Movement.HardLanding");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Climbing, "Character.State.Movement.Climbing");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Swimming, "Character.State.Movement.Swimming");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Flying, "Character.State.Movement.Flying");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Riding, "Character.State.Movement.Riding");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Gliding, "Character.State.Movement.Gliding");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Crouching, "Character.State.Movement.Crouching");
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Movement_Rolling, "Character.State.Movement.Rolling");
 
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_None, "Character.State.Combat.None");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_Attacking, "Character.State.Combat.Attacking");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_Blocking, "Character.State.Combat.Blocking");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_Parrying, "Character.State.Combat.Parrying");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_Dodging, "Character.State.Combat.Dodging");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_Knockback, "Character.State.Combat.Knockback");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_Invulnerable, "Character.State.Combat.Invulnerable");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_SuperArmor, "Character.State.Combat.SuperArmor");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_Countering, "Character.State.Combat.Countering");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_Finishing, "Character.State.Combat.Finishing");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_Channeling, "Character.State.Combat.Channeling");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_Casting, "Character.State.Combat.Casting");
-	UE_DEFINE_GAMEPLAY_TAG(Character_State_Combat_Aiming, "Character.State.Combat.Aiming");
 
 	UE_DEFINE_GAMEPLAY_TAG(Character_State_Buff_Strengthened, "Character.State.Buff.Strengthened");
 
@@ -88,9 +98,6 @@ namespace RPGGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Weapon_Type_Magic_Staff, "Weapon.Type.Magic.Staff");
 	UE_DEFINE_GAMEPLAY_TAG(Weapon_Type_Shield, "Weapon.Type.Shield");
 
-	UE_DEFINE_GAMEPLAY_TAG(Weapon_Property_OneHanded, "Weapon.Property.OneHanded");
-	UE_DEFINE_GAMEPLAY_TAG(Weapon_Property_TwoHanded, "Weapon.Property.TwoHanded");
-
 	UE_DEFINE_GAMEPLAY_TAG(Equipment_Slot_Head, "Equipment.Slot.Head");
 	UE_DEFINE_GAMEPLAY_TAG(Equipment_Slot_Chest, "Equipment.Slot.Chest");
 	UE_DEFINE_GAMEPLAY_TAG(Equipment_Slot_Legs, "Equipment.Slot.Legs");
@@ -99,22 +106,5 @@ namespace RPGGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Equipment_Slot_Neck, "Equipment.Slot.Neck");
 	UE_DEFINE_GAMEPLAY_TAG(Equipment_Slot_MainHand, "Equipment.Slot.MainHand");
 	UE_DEFINE_GAMEPLAY_TAG(Equipment_Slot_OffHand, "Equipment.Slot.OffHand");
-
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Vital_Health, "Attribute.Vital.Health");
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Vital_MaxHealth, "Attribute.Vital.MaxHealth");
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Vital_Mana, "Attribute.Vital.Mana");
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Vital_MaxMana, "Attribute.Vital.MaxMana");
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Vital_Stamina, "Attribute.Vital.Stamina");
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Vital_MaxStamina, "Attribute.Vital.MaxStamina");
-
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Primary_Strength, "Attribute.Primary.Strength");
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Primary_Intelligence, "Attribute.Primary.Intelligence");
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Primary_Dexterity, "Attribute.Primary.Dexterity");
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Primary_Constitution, "Attribute.Primary.Constitution");
-
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Secondary_AttackPower, "Attribute.Secondary.AttackPower");
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Secondary_MagicPower, "Attribute.Secondary.MagicPower");
-	UE_DEFINE_GAMEPLAY_TAG(Attribute_Secondary_Defense, "Attribute.Secondary.Defense");
-
-	UE_DEFINE_GAMEPLAY_TAG(QTE_Type_SingleKey, "QTE.Type.SingleKey");
+	
 }

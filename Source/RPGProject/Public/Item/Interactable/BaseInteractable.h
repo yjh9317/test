@@ -20,37 +20,40 @@ public:
 	ABaseInteractable();
 
 	//~ Begin IInteractableInterface
-	virtual void Initialize_Implementation() override;
-	virtual void ClientPreInteraction_Implementation(AActor* Interactor) override;
-	virtual void Interaction_Implementation(AActor* Interactor) override;
-	virtual void ClientStartInteraction_Implementation(AActor* Interactor) override;
-	virtual void EndInteraction_Implementation(AActor* Interactor) override;
-	virtual void ClientEndInteraction_Implementation(AActor* Interactor) override;
-	virtual void RemoveInteraction_Implementation() override {};
+	virtual void InitializeInteractable() override;
+	virtual void ExecuteInteraction(AActor* Interactor) override;
+	virtual void ClientPrepareInteraction() override {};
+	virtual void ClientBeginInteraction(AActor* Interactor) override {};
+	virtual void EndInteraction(AActor* Interactor) override {};
+	virtual void ClientEndInteraction(AActor* ClientEndInteraction) override {};
+	virtual void RemoveInteraction() override {};
 	//~ End IInteractableInterface
 
-protected:
-	//~ Begin AActor Overrides
-	virtual void BeginPlay() override;
-	//~ End AActor Overrides
+	//~==============================================================================================
+	// Components
+	//~==============================================================================================
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Components")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Interaction|Components")
 	TObjectPtr<UBoxComponent> InteractableArea;
 
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category="Components")
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category="Interaction|Components")
 	TObjectPtr<UWidgetComponent> InteractableWidget;
 
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category="Components")
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category="Interaction|Components")
 	TObjectPtr<UInteractableComponent> InteractableComponent;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Components")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Interaction|Mesh")
 	TObjectPtr<USkeletalMeshComponent> SkeletalMesh;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Components")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Interaction|Mesh")
 	TObjectPtr<UStaticMeshComponent> StaticMesh;
-private:
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<USceneComponent> Scene;
 
+protected:
+	virtual void BeginPlay() override;
+
+private:
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Interaction|Components", 
+		meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USceneComponent> SceneRoot;
 
 };

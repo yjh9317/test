@@ -19,17 +19,16 @@ public:
 	ABaseItemPickup();
 
 	//~ Begin IInteractable Interface
-	virtual void RemoveInteraction_Implementation() override;
-	virtual void Interaction_Implementation(AActor* Interactor) override;
-	virtual void EndInteraction_Implementation(AActor* Interactor) override;
-	virtual void ClientStartInteraction_Implementation(AActor* Interactor) override;
-	virtual void ClientEndInteraction_Implementation(AActor* Interactor) override;
-	virtual bool CanBeInteractedWith_Implementation() override;
+	virtual void RemoveInteraction() override;
+	virtual void ExecuteInteraction(AActor* Interactor) override;
+	virtual void EndInteraction(AActor* Interactor) override;
+	virtual void ClientBeginInteraction(AActor* Interactor) override;
+	virtual void ClientEndInteraction(AActor* Interactor) override;
+	virtual bool CanBeInteractedWith() override;
 	//~ End IInteractable Interface
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Interaction|Inventory")
 	TObjectPtr<UInventoryCoreComponent> InventoryCoreComponent;
-
 protected:
 	//~ Begin AActor Overrides
 	virtual void BeginPlay() override;
@@ -41,10 +40,21 @@ protected:
 
 private:
 	void SetPhysicsSimulationAndCollision();
-    
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="State|Interactor", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<AActor> interactor;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="State|Interactor", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<AActor> localInteractor;
+	/**
+	 * 서버 측 Interactor 참조
+	 * - 서버에서 상호작용 중인 플레이어 추적
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Interaction|State", 
+		meta=(AllowPrivateAccess="true"))
+	TObjectPtr<AActor> ServerInteractor;
+
+	/**
+	 * 클라이언트 측 Interactor 참조
+	 * - 로컬 클라이언트에서 상호작용 중인 플레이어 추적
+	 * - UI 표시/숨김 등 클라이언트 전용 작업에 사용
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Interaction|State", 
+		meta=(AllowPrivateAccess="true"))
+	TObjectPtr<AActor> LocalInteractor;
 };

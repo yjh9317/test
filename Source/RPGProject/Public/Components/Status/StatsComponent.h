@@ -234,6 +234,17 @@ public:
 	void RemoveItemStatBonus(const FGameplayTag& StatTag, const FGameplayTag& ItemID);
 	void AddTemporaryStatBuff(const FGameplayTag& StatTag, const FGameplayTag& BuffID,float BonusValue, float Duration,EStatModifierType ModifierType = EStatModifierType::Flat);
 	void RemoveStatBuff(const FGameplayTag& StatTag, const FGameplayTag& BuffID);
+
+	/**
+	* 스탯 값을 델타만큼 변경 (상대적 변경)
+	*/
+	float ModifyStatValue(const FGameplayTag& StatTag, float Delta);
+	float ModifyStatByPercentage(const FGameplayTag& StatTag, float Percentage);
+	void RestoreStatToMax(const FGameplayTag& StatTag);
+	void RestoreMultipleStatsToMax(const TArray<FGameplayTag>& StatTags);
+	bool IsStatBelowThreshold(const FGameplayTag& StatTag, float Threshold) const;
+	bool IsStatFull(const FGameplayTag& StatTag) const;
+	bool IsStatEmpty(const FGameplayTag& StatTag) const;
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction) override;

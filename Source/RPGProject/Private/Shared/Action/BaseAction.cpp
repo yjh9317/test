@@ -164,7 +164,7 @@ void UBaseAction::ConsumeResources()
     {
         // GetAttributeComponent()->ModifyAttribute(Cost.CostAttributeTag, -Cost.CostValue);
         UE_LOG(LogTemp, Verbose, TEXT("Consuming %f of %s"), 
-               Cost.CostValue, *Cost.CostAttributeTag.ToString());
+               Cost.CostValue, *Cost.CostStatTag.ToString());
     }
 }
 
@@ -176,7 +176,7 @@ void UBaseAction::RefundResources(float Percentage)
         float RefundAmount = Cost.CostValue * Percentage;
         // GetAttributeComponent()->ModifyAttribute(Cost.CostAttributeTag, RefundAmount);
         UE_LOG(LogTemp, Verbose, TEXT("Refunding %f of %s"), 
-               RefundAmount, *Cost.CostAttributeTag.ToString());
+               RefundAmount, *Cost.CostStatTag.ToString());
     }
 }
 

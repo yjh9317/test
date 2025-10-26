@@ -34,113 +34,135 @@ protected:
 	virtual void AcknowledgePossession(APawn* P) override;
 	virtual void PostInitializeComponents() override;
 	virtual void OnPossess(APawn* InPawn) override;
+private:
+	// --------------------
+	// 입력 처리
+	// --------------------
 	void OpenInventoryWidget();
 	void OpenEquipmentWidget();
-
 	void InputInteraction();
-private:
-	UPROPERTY()
-	class AMainHUD* MainHUD;
+
+	// --------------------
+	// 참조
+	// --------------------
+	UPROPERTY(Transient)
+	AMainHUD* MainHUD;
 	
-	UPROPERTY(VisibleInstanceOnly,BlueprintReadOnly,meta=(AllowPrivateAccess="true"))
+	UPROPERTY(Transient)
 	AMainCharacter* MainCharacter;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CharacterData", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	UDataAsset_InputConfig* InputConfigDataAsset;
 
 	// --------------------
-	// Component
+	// 컴포넌트
 	// --------------------
-	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY()
 	TObjectPtr<UInventoryComponent> InventoryComponent;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY()
 	TObjectPtr<UInteractionComponent> InteractionComp;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY()
 	TObjectPtr<UEquipmentComponent> EquipmentComponent;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY()
 	TObjectPtr<UPlayerWidgetComponent> PlayerWidgetComponent;
 	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY()
 	TObjectPtr<UInputBufferComponent> InputBufferComponent;
 	
 	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	//TObjectPtr<UTargetSystemComponent> TargetSystemComponent;
 
 	// --------------------
-	// Variables
+	// 상호작용 상태
 	// --------------------
-	UPROPERTY(VisibleInstanceOnly)
+	UPROPERTY(Transient)
 	TObjectPtr<UInteractableComponent> CurrentInteractable;
 
-	UPROPERTY(VisibleInstanceOnly)
+	UPROPERTY(Transient)
 	TObjectPtr<APlayerCaptureActor> PlayerCaptureActor;
+	
 public:
-	FORCEINLINE AMainHUD* GetMainHUD() const {return MainHUD;}
+	// --------------------
+	// Getter
+	// --------------------
+	FORCEINLINE AMainHUD* GetMainHUD() const { return MainHUD; }
 
-#pragma region InterfaceFunction
-	// Component Manger
-	// virtual UInventoryComponent* GetInventoryComponent_Implementation() override;
-	// virtual UEquipmentComponent* GetEquipmentComponent_Implementation() override;
-	// virtual UInteractionComponent* GetInteractionComponent_Implementation() override;
-	// virtual UActionComponent* GetActionComponent_Implementation() override;
-	// virtual UInputBufferComponent* GetInputBufferComponent_Implementation() override;
+	// --------------------
+	// IComponentManager 인터페이스 구현
+	// --------------------
 	virtual UInventoryComponent* GetInventoryComponent() override;
 	virtual UEquipmentComponent* GetEquipmentComponent() override;
 	virtual UInteractionComponent* GetInteractionComponent() override;
 	virtual UActionComponent* GetActionComponent() override;
 	virtual UInputBufferComponent* GetInputBufferComponent() override;
 
-	// WidgetManager
-#pragma region WidgetManager
+	// --------------------
+	// IWidgetManager 인터페이스 구현
+	// --------------------
 	virtual void SetActiveTab(EWidgetType NewType) override;
 	virtual void SetActiveWidget(EWidgetType NewType) override;
 	virtual void SwitchTabTo(EWidgetType NewType) override;
 	virtual void SwitchWidgetTo(EWidgetType NewType) override;
-	
 	virtual void CloseActivePopup() override;
 	virtual void CloseActiveWidget() override;
 	virtual void OpenNewWidget(EWidgetType NewType) override;
-
-	virtual EWidgetType GetActiveTab() const override { return PlayerWidgetComponent->GetActiveTab();}
-	virtual EWidgetType GetActiveWidget() const override { return PlayerWidgetComponent->GetActiveWidget();}
-	virtual EWidgetPopup GetActivePopup() const override { return PlayerWidgetComponent->GetActivePopupType();}
-
-	virtual void StartPlayerCapture() override;;
+	virtual EWidgetType GetActiveTab() const override;
+	virtual EWidgetType GetActiveWidget() const override;
+	virtual EWidgetPopup GetActivePopup() const override;
+	virtual void StartPlayerCapture() override;
 	virtual void StopPlayerCapture() override;
-#pragma endregion 
-	// ObjectInteraction
+	
+	// --------------------
+	// IObjectInteraction 인터페이스 구현
+	// --------------------
 	virtual void StartInteractionWithObject(UInteractableComponent* InteractableComponent) override;
 	virtual void EndInteractionWithObject(UInteractableComponent* InteractableComponent) override;
 	virtual void RemoveInteractionWithObject(UInteractableComponent* InteractableComponent) override;
 	virtual void InitializeInteractionWithObject(UInteractableComponent* InteractableComponent) override;
 	virtual AActor* GetCurrentInteractableObject() override;
-#pragma endregion
+
 
 private:
-	// Internal
-	UFUNCTION(Server,Reliable)
+	// --------------------
+	// 네트워크 RPC - 상호작용 시작
+	// --------------------
+	UFUNCTION(Server, Reliable)
 	void ServerStartInteractionWithObject(UInteractableComponent* InteractableComponent);
-	UFUNCTION(Client,Reliable)
+	
+	UFUNCTION(Client, Reliable)
 	void ClientStartInteractionWithObject(UInteractableComponent* InteractableComponent);
+	
 	void StartInteraction(UInteractableComponent* InteractableComp);
 	
-	UFUNCTION(Server,Reliable)
+	// --------------------
+	// 네트워크 RPC - 상호작용 종료
+	// --------------------
+	UFUNCTION(Server, Reliable)
 	void ServerEndInteractionWithObject(UInteractableComponent* InteractableComponent);
-	UFUNCTION(Client,Reliable)
+	
+	UFUNCTION(Client, Reliable)
 	void ClientEndInteractionWithObject(UInteractableComponent* InteractableComponent);
+	
 	void EndInteraction(UInteractableComponent* InteractableComponent);
 	
-	UFUNCTION(Client,Reliable)
+	// --------------------
+	// 네트워크 RPC - 상호작용 초기화
+	// --------------------
+	UFUNCTION(Client, Reliable)
 	void ClientInitializeInteractionWithObject(UInteractableComponent* InteractableComponent);
+	
 	void InitializeInteraction(UInteractableComponent* InteractableComponent);
 	
-	UFUNCTION(Server,Reliable)
+	// --------------------
+	// 네트워크 RPC - 상호작용 제거
+	// --------------------
+	UFUNCTION(Server, Reliable)
 	void ServerRemoveInteractionWithObject(UInteractableComponent* InteractableComponent);
-	UFUNCTION(Client,Reliable)
+	
+	UFUNCTION(Client, Reliable)
 	void ClientRemoveInteractionWithObject(UInteractableComponent* InteractableComponent);
 	
 	void RemoveInteraction(UInteractableComponent* InteractableComponent);

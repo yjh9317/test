@@ -27,9 +27,20 @@ void UMinimapWidget::NativeConstruct()
 	// Overlay_DistantMarker->SetRenderOpacity(1.f);
 }
 
-void UMinimapWidget::InitializeWidget()
+void UMinimapWidget::NativePreConstruct()
 {
-	DebugHeader::LogWarning("UMinimapWidget::InitializeWidget");
+	if(Image_Map)
+	{
+		if (IsDesignTime())
+		{
+			Image_Map->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		else
+		{
+			Image_Map->SetVisibility(ESlateVisibility::Visible);
+		}
+	}
+
 	// MapSize = GetMapTextureSize();
 	// SetCanvasMapSize(MapSize);
 
@@ -43,22 +54,6 @@ void UMinimapWidget::InitializeWidget()
 		Image_Frame->SetRenderTransformAngle(-90.f);
 		Overlay_PointerAnim->SetRenderTransformAngle(-90.f);
 		Overlay_CanvasPanelMap->SetRenderTransformAngle(-90.f);
-	}
-	
-}
-
-void UMinimapWidget::NativePreConstruct()
-{
-	if(Image_Map)
-	{
-		if (IsDesignTime())
-		{
-			Image_Map->SetVisibility(ESlateVisibility::Collapsed);
-		}
-		else
-		{
-			Image_Map->SetVisibility(ESlateVisibility::Visible);
-		}
 	}
 }
 

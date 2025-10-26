@@ -15,7 +15,7 @@ URollAction::URollAction(const FObjectInitializer& ObjectInitializer)
 	bInterruptible = false;
     
 	FActionCost StaminaCost;
-	StaminaCost.CostAttributeTag = FGameplayTag::RequestGameplayTag("Attribute.Stamina");
+	StaminaCost.CostStatTag = FGameplayTag::RequestGameplayTag("Attribute.Stamina");
 	StaminaCost.CostValue = 0.f;
 	ResourceCosts.Add(StaminaCost);
     

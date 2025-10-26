@@ -11,8 +11,8 @@ ABaseInteractable::ABaseInteractable()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	Scene = CreateDefaultSubobject<USceneComponent>(TEXT("Default"));
-	SetRootComponent(Scene);
+	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("Default"));
+	SetRootComponent(SceneRoot);
 		
 	SkeletalMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("SkeletalMesh"));
 	SkeletalMesh->SetupAttachment(GetRootComponent());
@@ -32,35 +32,23 @@ ABaseInteractable::ABaseInteractable()
 void ABaseInteractable::BeginPlay()
 {
 	Super::BeginPlay();
+
+	InitializeInteractable();
 }
 
-void ABaseInteractable::Initialize_Implementation()
+void ABaseInteractable::InitializeInteractable()
 {
-	InteractableComponent->SetupInteractableReferences(InteractableArea, InteractableWidget,{SkeletalMesh,StaticMesh});
+	if (InteractableComponent)
+	{
+		InteractableComponent->SetupInteractableReferences(
+			InteractableArea, 
+			InteractableWidget, 
+			{SkeletalMesh, StaticMesh}
+		);
+	}
 }
 
-void ABaseInteractable::ClientPreInteraction_Implementation(AActor* Interactor)
+void ABaseInteractable::ExecuteInteraction(AActor* NewInteractor)
 {
-	IInteractableInterface::ClientPreInteraction_Implementation(Interactor);
+	IInteractableInterface::ExecuteInteraction(NewInteractor);
 }
-
-void ABaseInteractable::Interaction_Implementation(AActor* Interactor)
-{
-	IInteractableInterface::Interaction_Implementation(Interactor);
-}
-
-void ABaseInteractable::ClientStartInteraction_Implementation(AActor* Interactor)
-{
-	IInteractableInterface::ClientStartInteraction_Implementation(Interactor);
-}
-
-void ABaseInteractable::EndInteraction_Implementation(AActor* Interactor)
-{
-	IInteractableInterface::EndInteraction_Implementation(Interactor);
-}
-
-void ABaseInteractable::ClientEndInteraction_Implementation(AActor* Interactor)
-{
-	IInteractableInterface::ClientEndInteraction_Implementation(Interactor);
-}
-

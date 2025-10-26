@@ -465,9 +465,9 @@ ABaseEquippable* UEquipmentComponent::GetEquippedActorReference(EItemSlot Slot)
 
 FItemData UEquipmentComponent::AssignItemFromEquipmentSlot(FItemData InItemData)
 {
-	TArray<EItemSlot> PocketSlot{EItemSlot::POCKET1,EItemSlot::POCKET2,EItemSlot::POCKET3,EItemSlot::POCKET4};
-	FItemData EquipmentSlotItemData{};
-	EItemSlot LocalSlot = EItemSlot::NONE;
+	// TArray<EItemSlot> PocketSlot{EItemSlot::POCKET1,EItemSlot::POCKET2,EItemSlot::POCKET3,EItemSlot::POCKET4};
+	// FItemData EquipmentSlotItemData{};
+	// EItemSlot LocalSlot = EItemSlot::NONE;
 	
 	// if(PocketSlot.Contains(InItemData.EquipmentSlot))
 	// {

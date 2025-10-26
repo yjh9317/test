@@ -37,10 +37,13 @@ void UInteractableComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 void UInteractableComponent::BeginPlay()
 {
 	AActor* OwnerActor = GetOwner();
-	IInteractableInterface* InteractableInterface = Cast<IInteractableInterface>(GetOwner());
-	if(OwnerActor && OwnerActor->GetClass()->ImplementsInterface(UInteractableInterface::StaticClass()))
+	if(!OwnerActor) return;
+	
+	IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(OwnerActor);
+
+	if (InteractableOwner)
 	{
-		IInteractableInterface::Execute_Initialize(OwnerActor);
+		InteractableOwner->InitializeInteractable();
 	}
 }
 
@@ -51,14 +54,13 @@ void UInteractableComponent::AssociatedActorInteraction(AActor* Interactor)
 	TArray<AActor*> Actors;
 	AssociatedInteractableActors.GetKeys(Actors);
 
-	for(const auto Actor : Actors)
+	for(const auto* Actor : Actors)
 	{
-		if(Actor)
+		if(!Actor) continue;
+
+		if (UInteractableComponent* InteractableComponent = Actor->FindComponentByClass<UInteractableComponent>())
 		{
-			if(UInteractableComponent* InteractableComponent = Actor->FindComponentByClass<UInteractableComponent>())
-			{
-				InteractableComponent->CheckForInteractionWithAssociate(Interactor);	
-			}
+			InteractableComponent->CheckForInteractionWithAssociate(Interactor);
 		}
 	}
 }
@@ -68,9 +70,14 @@ void UInteractableComponent::OnInteraction(AActor* Interactor)
 	CurrentInteractor = Interactor;
 	AlreadyInteracted = true;
 
-	if(GetOwner()->GetClass()->ImplementsInterface(UInteractableInterface::StaticClass()))
+	AActor* OwnerActor = GetOwner();
+	if(!OwnerActor) return;
+
+	IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(OwnerActor);
+
+	if (InteractableOwner)
 	{
-		IInteractableInterface::Execute_Interaction(GetOwner(),CurrentInteractor);
+		InteractableOwner->ExecuteInteraction(CurrentInteractor);
 	}
 	
 	RemoveInteractionByResponse();
@@ -78,36 +85,42 @@ void UInteractableComponent::OnInteraction(AActor* Interactor)
 
 void UInteractableComponent::CheckForInteractionWithAssociate(AActor* Interactor)
 {
-	if(Interactor)
+	if (!Interactor)
 	{
-		CurrentInteractor = Interactor;
-		if(CheckForAssociatedActors && IsTargetInteractableValue())
+		return;
+	}
+
+	CurrentInteractor = Interactor;
+	
+	// 연결된 액터 체크가 활성화되고 목표 값이 맞는 경우
+	if (CheckForAssociatedActors && IsTargetInteractableValue())
+	{
+		OnInteraction(CurrentInteractor);
+		
+		TArray<AActor*> Actors;
+		AssociatedInteractableActors.GetKeys(Actors);
+		
+		// OnlyOnce 또는 완료 시 제거 옵션이 활성화된 경우
+		if (RemoveAssociatedInteractableOnComplete || InteractionResponse == EInteractionResponse::OnlyOnce)
 		{
-			OnInteraction(CurrentInteractor);
-			
-			TArray<AActor*> Actors;
-			AssociatedInteractableActors.GetKeys(Actors);
-			
-			if(RemoveAssociatedInteractableOnComplete || InteractionResponse == EInteractionResponse::OnlyOnce)
+			for (const auto Actor : Actors)
 			{
-				for(const auto Actor : Actors)
+				if (UInteractableComponent* Comp = Actor->FindComponentByClass<UInteractableComponent>())
 				{
-					if(UInteractableComponent* Comp = Actor->FindComponentByClass<UInteractableComponent>())
-					{
-						OnRemoveInteraction();
-						Comp->InteractionResponse = EInteractionResponse::OnlyOnce;
-					}
+					OnRemoveInteraction();
+					Comp->InteractionResponse = EInteractionResponse::OnlyOnce;
 				}
 			}
-			else if (InteractionResponse == EInteractionResponse::Temporary)
+		}
+		// Temporary 응답인 경우
+		else if (InteractionResponse == EInteractionResponse::Temporary)
+		{
+			for (const auto Actor : Actors)
 			{
-				for(const auto Actor : Actors)
+				if (UInteractableComponent* Comp = Actor->FindComponentByClass<UInteractableComponent>())
 				{
-					if(UInteractableComponent* Comp = Actor->FindComponentByClass<UInteractableComponent>())
-					{
-						OnRemoveInteraction();
-						Comp->ToggleCanBeReInitialized(false);
-					}
+					OnRemoveInteraction();
+					Comp->ToggleCanBeReInitialized(false);
 				}
 			}
 		}
@@ -116,18 +129,24 @@ void UInteractableComponent::CheckForInteractionWithAssociate(AActor* Interactor
 
 void UInteractableComponent::ClientInteraction(AActor* Interactor)
 {
-	if(GetOwner()->GetClass()->ImplementsInterface(UInteractableInterface::StaticClass()))
+	AActor* OwnerActor = GetOwner();
+	if(!OwnerActor) return;
+	IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(OwnerActor);
+
+	if (InteractableOwner)
 	{
-		IInteractableInterface::Execute_ClientStartInteraction(GetOwner(),Interactor);
+		InteractableOwner->ClientBeginInteraction(Interactor);
 	}
 }
 
 void UInteractableComponent::ToggleHighlight(bool Highlight, AActor* Interactor)
 {
-	if(InteractionWidget)
+	// 상호작용 위젯 표시/숨김
+	if (InteractionWidget)
 	{
-		InteractionWidget->SetVisibility(Highlight,false);
+		InteractionWidget->SetVisibility(Highlight, false);
 	}
+	// 하이라이트 대상 오브젝트들의 커스텀 뎁스 설정
 	for (UPrimitiveComponent* Component : ObjectsToHighlight)
 	{
 		if (Component)
@@ -135,32 +154,36 @@ void UInteractableComponent::ToggleHighlight(bool Highlight, AActor* Interactor)
 			Component->SetRenderCustomDepth(Highlight);
 		}
 	}
-	APlayerController* OwningPC = Cast<APlayerController>(Interactor);
-	Server_SetWidgetLocalOwner(OwningPC);
-	//SetWidgetLocalOwner(OwningPC);
+	// 위젯 소유자 설정 (서버 RPC)
+	if (APlayerController* OwningPC = Cast<APlayerController>(Interactor))
+	{
+		Server_SetWidgetLocalOwner(OwningPC);
+		//SetWidgetLocalOwner(OwningPC);
+	}
 }
 
 void UInteractableComponent::SetupInteractableReferences(UBoxComponent* Area, UWidgetComponent* Widget,
 	TSet<UPrimitiveComponent*> HighlightableObjects)
 {
-	if(Area) 
+	if (Area) 
 	{
 		InteractableArea = Area;
 	}
-	if(Widget)
+	
+	if (Widget)
 	{
 		InteractionWidget = Widget;
 	}
-	TArray<UPrimitiveComponent*> HighlightableObjectsArray;
+	
+	// 하이라이트 대상 오브젝트 배열 변환 및 설정
+	ObjectsToHighlight.Reserve(HighlightableObjects.Num());
 	for (const auto& Object : HighlightableObjects)
 	{
-		HighlightableObjectsArray.Add(Object);
-	}
-	ObjectsToHighlight = HighlightableObjectsArray;
-
-	for(const auto Object : ObjectsToHighlight)
-	{
-		Object->SetCollisionResponseToChannel(ECO_Interactable,ECR_Block);
+		if (Object)
+		{
+			ObjectsToHighlight.Add(Object);
+			Object->SetCollisionResponseToChannel(ECO_Interactable, ECR_Block);
+		}
 	}
 }
 
@@ -189,20 +212,25 @@ void UInteractableComponent::DurationPress()
 void UInteractableComponent::IsKeyDown()
 {
 	IObjectInteraction* ObjectInteraction = Cast<IObjectInteraction>(CurrentInteractor);
-	if(nullptr == ObjectInteraction)
+	if (!ObjectInteraction)
 	{
 		return;
 	}
 
 	AActor* CurrentInteraction = ObjectInteraction->GetCurrentInteractableObject();
+	
+	// 현재 상호작용 중인 오브젝트가 이 컴포넌트의 소유자인 경우
 	if (CurrentInteraction && CurrentInteraction == GetOwner())
 	{
 		const EOperationStatus InputState = HoldingInput();
+		
+		// 홀딩 완료
 		if (InputState == EOperationStatus::Complete)
 		{
 			GetWorld()->GetTimerManager().ClearTimer(KeyDownTimer);
 			ObjectInteraction->StartInteractionWithObject(this);
 		}
+		// 키를 뗀 경우 (리셋)
 		else if (InputState == EOperationStatus::Reset)
 		{
 			GetWorld()->GetTimerManager().ClearTimer(KeyDownTimer);
@@ -218,42 +246,49 @@ void UInteractableComponent::IsKeyDown()
 void UInteractableComponent::MultiplePress()
 {
 	EOperationStatus MashHoldState = MashingInput(10);
-	if(EOperationStatus::None == MashHoldState)
+	
+	// 진행 중
+	if (EOperationStatus::None == MashHoldState)
 	{
 		OnUpdateMashingValue.Broadcast(CurrentMashingValue);	
 	}
-	else if(EOperationStatus::Complete == MashHoldState)
+	// 매싱 완료
+	else if (EOperationStatus::Complete == MashHoldState)
 	{
 		OnUpdateMashingValue.Broadcast(CurrentMashingValue);
+		
+		// 딜레이 후 상호작용 시작
 		FTimerHandle UnusedHandle;
 		GetWorld()->GetTimerManager().SetTimer(UnusedHandle, [this]()
 		{
 			IObjectInteraction* ObjectInteraction = Cast<IObjectInteraction>(CurrentInteractor);
-			if(ObjectInteraction)
+			if (ObjectInteraction)
 			{
 				ObjectInteraction->StartInteractionWithObject(this);
 			}
 		}, 0.2f, false);
-		
 	}
 }
 
 void UInteractableComponent::OnPreInteraction(AActor* Interactor)
 {
-	if(nullptr == Interactor) return;
+	if (!Interactor)
+	{
+		return;
+	}
 
 	CurrentInteractor = Interactor;
 
-	if (GetOwner()->GetClass()->ImplementsInterface(UInteractableInterface::StaticClass()))
+	IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(CurrentInteractor);
+	if (InteractableOwner)
 	{
-		IInteractableInterface::Execute_ClientPreInteraction(GetOwner(), CurrentInteractor);
+		InteractableOwner->ClientPrepareInteraction();
 	}
 	
 	switch (InputType)
 	{
 	case EInteractionInputType::Single:
 		{
-			// DebugHeader::LogWarning(TEXT("Single"));
 			IObjectInteraction* ObjectInteraction = Cast<IObjectInteraction>(CurrentInteractor);
 			if (ObjectInteraction)
 			{
@@ -261,15 +296,15 @@ void UInteractableComponent::OnPreInteraction(AActor* Interactor)
 			}
 			break;
 		}
+		
 	case EInteractionInputType::Holding:
 		{
-			// DebugHeader::LogWarning(TEXT("Holding"));
 			DurationPress();
 			break;
 		}
+		
 	case EInteractionInputType::MultipleAndMashing:
 		{
-			// DebugHeader::LogWarning(TEXT("MultipleAndMashing"));
 			MultiplePress();
 			break;
 		}
@@ -283,39 +318,49 @@ void UInteractableComponent::OnRemoveInteraction_Implementation()
 
 void UInteractableComponent::ClientRemoveInteraction()
 {
-	if (GetOwner()->GetClass()->ImplementsInterface(UInteractableInterface::StaticClass()))
+	AActor* OwnerActor = GetOwner();
+	if(!OwnerActor) return;
+	
+	IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(OwnerActor);
+	if (InteractableOwner)
 	{
-		IInteractableInterface::Execute_RemoveInteraction(GetOwner());
+		InteractableOwner->RemoveInteraction();
 	}
+	// 상호작용 불가 상태로 변경
 	bIsInteractable = false;
 	InteractableArea = nullptr;
+	
+	// 픽업 후 파괴 옵션이 활성화된 경우
 	if(DestroyAfterPickup)
 	{
 		GetOwner()->Destroy();
 	}
 }
 
-void UInteractableComponent::OnEndInteraction(AActor* Interactor)
+void UInteractableComponent::OnEndInteraction(AActor* NewInteractor)
 {
-	if(GetOwner()->GetClass()->ImplementsInterface(UInteractableInterface::StaticClass()))
+	AActor* OwnerActor = GetOwner();
+	if(!OwnerActor) return;
+	
+	IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(OwnerActor);
+	if (InteractableOwner)
 	{
-		IInteractableInterface::Execute_EndInteraction(GetOwner(),Interactor);	
+		InteractableOwner->EndInteraction(NewInteractor);
 	}
 }
 
 void UInteractableComponent::AssociatedActorEndInteraction()
 {
-	TArray<AActor*> Keys{};
+	TArray<AActor*> Keys;
 	AssociatedInteractableActors.GetKeys(Keys);
 
-	for(auto Key : Keys)
+	for (auto* Key : Keys)
 	{
-		if(Key)
+		if (!Key) continue;
+
+		if (UInteractableComponent* InteractableComponent = Key->FindComponentByClass<UInteractableComponent>())
 		{
-			if(UInteractableComponent* InteractableComponent = Key->FindComponentByClass<UInteractableComponent>())
-			{
-				InteractableComponent->EndInteraction(CurrentInteractor);
-			}
+			InteractableComponent->OnEndInteraction(CurrentInteractor);
 		}
 	}
 }
@@ -326,9 +371,10 @@ void UInteractableComponent::Reinitialize()
 	{
 		if (CanBeReInitialized)
 		{
-			if(GetOwner()->GetClass()->ImplementsInterface(UInteractableInterface::StaticClass()))
+			IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(GetOwner());
+			if (InteractableOwner)
 			{
-				IInteractableInterface::Execute_Initialize(GetOwner());
+				InteractableOwner->InitializeInteractable();
 			}
 		}
 		ToggleIsInteractable(true);
@@ -341,18 +387,17 @@ void UInteractableComponent::Reinitialize()
 
 void UInteractableComponent::ReInitializeAssociatedActors()
 {
-	TArray<AActor*> Keys{};
+	TArray<AActor*> Keys;
 	AssociatedInteractableActors.GetKeys(Keys);
 
-	for(auto Key : Keys)
+	for (const auto* Key : Keys)
 	{
-		if(Key)
+		if (!Key) continue;
+
+		if (UInteractableComponent* InteractableComponent = Key->FindComponentByClass<UInteractableComponent>())
 		{
-			if(UInteractableComponent* InteractableComponent = Key->FindComponentByClass<UInteractableComponent>())
-			{
-				InteractableComponent->ToggleCanBeReInitialized(true);
-				Reinitialize();
-			}
+			InteractableComponent->ToggleCanBeReInitialized(true);
+			Reinitialize();
 		}
 	}
 }
@@ -360,9 +405,11 @@ void UInteractableComponent::ReInitializeAssociatedActors()
 
 void UInteractableComponent::OnClientEndInteraction(AActor* Interactor)
 {
-	if(GetOwner()->GetClass()->ImplementsInterface(UInteractableInterface::StaticClass()))
+	IInteractableInterface* InteractableOwner = Cast<IInteractableInterface>(GetOwner());
+
+	if (InteractableOwner)
 	{
-		IInteractableInterface::Execute_ClientEndInteraction(GetOwner(),Interactor);
+		InteractableOwner->ClientEndInteraction(Interactor);
 	}
 }
 
@@ -374,7 +421,7 @@ void UInteractableComponent::ToggleIsInteractable(bool Condition)
 	}
 }
 
-void UInteractableComponent::ToggleInteractionWidget(bool Condition)
+void UInteractableComponent::SetInteractionWidgetVisible(bool Condition)
 {
 	if(bIsInteractable && InteractionWidgetRef)
 	{
@@ -385,7 +432,9 @@ void UInteractableComponent::ToggleInteractionWidget(bool Condition)
 
 void UInteractableComponent::RemoveInteractionByResponse()
 {
-	if(InteractionResponse == EInteractionResponse::OnlyOnce || InteractionResponse == EInteractionResponse::Temporary)
+	// OnlyOnce 또는 Temporary 응답인 경우 상호작용 제거
+	if (InteractionResponse == EInteractionResponse::OnlyOnce || 
+		InteractionResponse == EInteractionResponse::Temporary)
 	{
 		OnRemoveInteraction();
 	}
@@ -421,15 +470,16 @@ void UInteractableComponent::SetWidgetLocalOwner(APlayerController* OwningPlayer
 {
 	if(nullptr == OwningPlayer) return;
 
-	if(InteractionWidgetClass)
+	if (InteractionWidgetClass)
 	{
-		InteractionWidgetRef = CreateWidget<UInteractionPromptWidget>(OwningPlayer,InteractionWidgetClass);
+		// 위젯 생성 및 초기화
+		InteractionWidgetRef = CreateWidget<UInteractionPromptWidget>(OwningPlayer, InteractionWidgetClass);
 		InteractionWidgetRef->InputType = InputType;
 		InteractionWidgetRef->InteractableComponent = this;
 		
+		// 위젯 컴포넌트 설정
 		InteractionWidget->SetWidget(InteractionWidgetRef);
 		InteractionWidget->SetOwnerPlayer(InteractionWidgetRef->GetOwningLocalPlayer());
-
 		InteractionWidget->SetWidgetSpace(EWidgetSpace::Screen);
 		InteractionWidget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		InteractionWidget->SetDrawAtDesiredSize(true);
@@ -444,33 +494,37 @@ void UInteractableComponent::Server_SetWidgetLocalOwner_Implementation(APlayerCo
 EOperationStatus UInteractableComponent::HoldingInput()
 {
 	APlayerController* Controller = Cast<APlayerController>(CurrentInteractor);
-	if(Controller)
+	if (!Controller)
 	{
-		float KeyDownTime = Controller->GetInputKeyTimeDown(PressedInteractionKey);
-
-		if(KeyDownTime <= 0.0f)
-   		{
-   			return EOperationStatus::Reset;
-   		}
-		
-		OnUpdateHoldingValue.Broadcast(KeyDownTime);
-		
-		if(KeyDownTime > MaxKeyTimeDown)
-		{
-			return EOperationStatus::Complete;
-		}
-
+		return EOperationStatus::None;
 	}
+
+	float KeyDownTime = Controller->GetInputKeyTimeDown(PressedInteractionKey);
+
+	// 키를 뗀 경우
+	if (KeyDownTime <= 0.0f)
+	{
+		return EOperationStatus::Reset;
+	}
+	
+	// 진행도 업데이트
+	OnUpdateHoldingValue.Broadcast(KeyDownTime);
+	
+	// 홀딩 완료
+	if (KeyDownTime > MaxKeyTimeDown)
+	{
+		return EOperationStatus::Complete;
+	}
+
 	return EOperationStatus::None;
 }
 
 EOperationStatus UInteractableComponent::MashingInput(int32 MashingCount)
 {
-	CurrentMashingValue += (1.f/MashingCount);
+	CurrentMashingValue += (1.f / MashingCount);
 	
-	// DebugHeader::LogWarning(TEXT("Mashing Progress: %f"),CurrentMashingValue);
-	
-	if(CurrentMashingValue >= 1.f)
+	// 매싱 완료
+	if (CurrentMashingValue >= 1.f)
 	{
 		CurrentMashingValue = 0.f;
 		GetWorld()->GetTimerManager().ClearTimer(MashingTimer);
@@ -478,13 +532,15 @@ EOperationStatus UInteractableComponent::MashingInput(int32 MashingCount)
 		return EOperationStatus::Complete;
 	}
 	
+	// 일정 시간 내에 재입력하지 않으면 리셋
 	GetWorld()->GetTimerManager().SetTimer(
 		MashingTimer,
 		this,
-		&UInteractableComponent::ResetMashingProgress, // 타이머 만료 시 호출될 함수
+		&UInteractableComponent::ResetMashingProgress,
 		MashingKeyRetriggerableTime,
 		false
 	);
+	
 	return EOperationStatus::None;
 }
 
@@ -492,7 +548,6 @@ void UInteractableComponent::ResetMashingProgress()
 {
 	CurrentMashingValue = 0.f;
 	OnUpdateHoldingValue.Broadcast(0.05f);
-	UE_LOG(LogTemp, Warning, TEXT("ResetMashingProgress"));
 }
 
 bool UInteractableComponent::IsTargetInteractableValue()
@@ -500,52 +555,53 @@ bool UInteractableComponent::IsTargetInteractableValue()
 	TArray<AActor*> Actors;
 	AssociatedInteractableActors.GetKeys(Actors);
 
-	for(const auto Actor : Actors)
+	// 연결된 액터들 중 목표 값과 일치하는 것이 있는지 체크
+	for (const auto* Actor : Actors)
 	{
 		int32 Value = *AssociatedInteractableActors.Find(Actor);
 		UInteractableComponent* Comp = Actor->FindComponentByClass<UInteractableComponent>();
-		if(Actor && Comp)
-		{
-			if(Comp->InteractableValue == Value)
-			{
-				return true;
-			}
-		}
 		
+		if (Actor && Comp && Comp->InteractableValue == Value) 
+		{
+			return true;
+		}
 	}
 	return false;
 }
 
 bool UInteractableComponent::GetPressedKeyByAction(UInputAction* Action,FKey& OutKey)
 {
-	if (APlayerController* PC = Cast<APlayerController>(CurrentInteractor))
+	APlayerController* PC = Cast<APlayerController>(CurrentInteractor);
+	if (!PC)
 	{
-		if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
-		{
-			UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
-			if (InputSubsystem)
-			{
-				TArray<FKey> Keys = InputSubsystem->QueryKeysMappedToAction(Action);
-				bool IsValid = false;
-				int index = 0;
-				for (int i = 0; i < Keys.Num(); ++i)
-				{
-					FKey CurrentKey = Keys[i];
-					if(PC->WasInputKeyJustPressed(CurrentKey))
-					{
-						IsValid = true;
-						index = i;
-						break;	
-					}
-				}
+		return false;
+	}
 
-				if(IsValid)
-				{
-					OutKey = Keys[index];
-					return true;
-				}
-			}
+	ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+	if (!LocalPlayer)
+	{
+		return false;
+	}
+
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
+	if (!InputSubsystem)
+	{
+		return false;
+	}
+
+	// 액션에 매핑된 모든 키 가져오기
+	TArray<FKey> Keys = InputSubsystem->QueryKeysMappedToAction(Action);
+	
+	// 방금 눌린 키 찾기
+	for (int i = 0; i < Keys.Num(); ++i)
+	{
+		FKey CurrentKey = Keys[i];
+		if (PC->WasInputKeyJustPressed(CurrentKey))
+		{
+			OutKey = Keys[i];
+			return true;
 		}
 	}
+
 	return false;
 }

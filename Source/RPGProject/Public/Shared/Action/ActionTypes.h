@@ -20,7 +20,7 @@ struct FActionCost
     GENERATED_BODY()
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-    FGameplayTag CostAttributeTag;
+    FGameplayTag CostStatTag;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
     float CostValue = 0.f;

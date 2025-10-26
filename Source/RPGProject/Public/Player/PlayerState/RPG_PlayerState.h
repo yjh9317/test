@@ -4,13 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
+#include "Interface/ComponentManager.h"
 #include "RPG_PlayerState.generated.h"
 
 /**
  * 
  */
 UCLASS()
-class RPGPROJECT_API ARPG_PlayerState : public APlayerState
+class RPGPROJECT_API ARPG_PlayerState : public APlayerState, public IComponentManager
 {
 	GENERATED_BODY()
 	

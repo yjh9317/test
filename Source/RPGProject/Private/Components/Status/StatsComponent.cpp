@@ -40,10 +40,7 @@ void UStatsComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	// DOREPLIFETIME(UStatsComponent, Attributes);
-	// DOREPLIFETIME(UStatsComponent, MaxValueAttributes);
-	// DOREPLIFETIME(UStatsComponent, CurrentLevel);
-	// DOREPLIFETIME(UStatsComponent, CurrentExperience);
+	DOREPLIFETIME(UStatsComponent, StatArray);
 }
 
 void UStatsComponent::BeginPlay()
@@ -64,25 +61,36 @@ void UStatsComponent::BeginPlay()
 
 void UStatsComponent::BeginDestroy()
 {
-	// 델리게이트 정리
-	OnStatChanged.Clear();
-	OnStatModified.Clear();
-	OnStatMaxValueChanged.Clear();
-	RefreshStats.Clear();
+    OnStatChanged.Clear();
+    OnStatModified.Clear();
+    OnStatMaxValueChanged.Clear();
+    RefreshStats.Clear();
 
-	// 타이머 정리
-	if (GetWorld())
-	{
-		GetWorld()->GetTimerManager().ClearTimer(StatRecalculationTimer);
-	}
+    // 모든 타이머 정리
+    if (GetWorld())
+    {
+        FTimerManager& TimerManager = GetWorld()->GetTimerManager();
+        
+        // 재계산 타이머
+        TimerManager.ClearTimer(StatRecalculationTimer);
+        
+        // 모든 Modifier 타이머 정리
+        for (auto& Pair : ModifierTimers)
+        {
+            TimerManager.ClearTimer(Pair.Value);
+        }
+        ModifierTimers.Empty();
+    }
 
-	Super::BeginDestroy();
+    // 캐시 정리
+    StatIndexCache.Empty();
+    
+    Super::BeginDestroy();
 }
 
 void UStatsComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
 
 	// 스탯 재계산이 필요한 경우
 	if (bNeedsStatRecalculation)
@@ -138,24 +146,47 @@ void UStatsComponent::SetStatValue(const FGameplayTag& StatTag, float Value)
 {
 	if (GetOwnerRole() != ROLE_Authority) return;
 
-	// 캐시 
+	if (!StatTag.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("SetStatValue called with invalid StatTag"));
+		return;
+	}
+
 	if (int32* Index = StatIndexCache.Find(StatTag))
 	{
 		FStatEntry& Entry = StatArray.Items[*Index];
 		float OldValue = Entry.CurrentValue;
-		Entry.CurrentValue = ClampStatValue(StatTag, Value);
+		float NewValue = ClampStatValue(StatTag, Value);
         
-		StatArray.MarkItemDirty(Entry);
-		OnStatChanged.Broadcast(StatTag, Entry.CurrentValue);
+		// 값이 실제로 변경된 경우에만 업데이트
+		if (!FMath::IsNearlyEqual(OldValue, NewValue, 0.01f))
+		{
+			Entry.CurrentValue = NewValue;
+			StatArray.MarkItemDirty(Entry);
+            
+			// 두 델리게이트 모두 브로드캐스트
+			OnStatChanged.Broadcast(StatTag, NewValue);
+			OnStatModified.Broadcast(StatTag, OldValue, NewValue);
+            
+			UE_LOG(LogTemp, VeryVerbose, TEXT("Stat Updated - Tag: %s, Old: %.2f, New: %.2f"),
+				*StatTag.ToString(), OldValue, NewValue);
+		}
 	}
-	else // 새 스탯 추가
+	// 새 스탯 추가
+	else
 	{
-		FStatEntry NewEntry(StatTag, Value, Value);
+		float ClampedValue = FMath::Max(0.0f, Value);
+		FStatEntry NewEntry(StatTag, ClampedValue, ClampedValue);
+        
 		int32 NewIndex = StatArray.Items.Add(NewEntry);
 		StatIndexCache.Add(StatTag, NewIndex);
 		StatArray.MarkArrayDirty();
         
-		OnStatChanged.Broadcast(StatTag, Value);
+		// 새로 추가된 스탯은 OnStatChanged만 브로드캐스트
+		OnStatChanged.Broadcast(StatTag, ClampedValue);
+        
+		UE_LOG(LogTemp, Log, TEXT("New Stat Added - Tag: %s, Value: %.2f"), 
+			*StatTag.ToString(), ClampedValue);
 	}
 }
 
@@ -163,21 +194,34 @@ void UStatsComponent::SetMaxStatValue(const FGameplayTag& StatTag, float MaxValu
 {
 	if (GetOwnerRole() != ROLE_Authority) return;
 
-	for (FStatEntry& Entry : StatArray.Items)
+	int32* Index = StatIndexCache.Find(StatTag);
+	if (!Index)
 	{
-		if (Entry.StatTag == StatTag)
-		{
-			Entry.MaxValue = MaxValue;
-            
-			if (Entry.CurrentValue > Entry.MaxValue)
-			{
-				Entry.CurrentValue = Entry.MaxValue;
-			}
-            
-			StatArray.MarkItemDirty(Entry);
-			OnStatMaxValueChanged.Broadcast(StatTag);
-			return;
-		}
+		UE_LOG(LogTemp, Warning, TEXT("SetMaxStatValue: Stat not found - %s"), 
+			*StatTag.ToString());
+		return;
+	}
+
+	FStatEntry& Entry = StatArray.Items[*Index];
+	float OldValue = Entry.CurrentValue;
+	Entry.MaxValue = MaxValue;
+    
+	// CurrentValue가 MaxValue를 초과하면 조정
+	if (Entry.CurrentValue > Entry.MaxValue)
+	{
+		Entry.CurrentValue = Entry.MaxValue;
+        
+		StatArray.MarkItemDirty(Entry);
+		OnStatMaxValueChanged.Broadcast(StatTag);
+        
+		// CurrentValue가 변경되었으므로 알림
+		OnStatChanged.Broadcast(StatTag, Entry.CurrentValue);
+		OnStatModified.Broadcast(StatTag, OldValue, Entry.CurrentValue);
+	}
+	else
+	{
+		StatArray.MarkItemDirty(Entry);
+		OnStatMaxValueChanged.Broadcast(StatTag);
 	}
 }
 
@@ -199,8 +243,10 @@ TArray<FGameplayTag> UStatsComponent::GetAllStatTags() const
 
 void UStatsComponent::InitializeStats()
 {
+	checkf(DataAsset_StatConfig,TEXT("UStatsComponent::InitializeStats : DataAsset_StatConfig is not valid "));
+	
 	StatArray.OwnerComponent = this;
-    
+		
 	for (const auto& Config : DataAsset_StatConfig->StatConfigs)
 	{
 		FStatEntry NewEntry(Config.StatTag, Config.BaseValue, Config.MaxValue);
@@ -356,6 +402,7 @@ void UStatsComponent::RemoveStatBuff(const FGameplayTag& StatTag, const FGamepla
 	RemoveStatModifier(StatTag, BuffID);
 }
 
+
 void UStatsComponent::SetupModifierTimer(const FGameplayTag& StatTag, float Duration)
 {
 	if (FTimerHandle* ExistingTimer = ModifierTimers.Find(StatTag))
@@ -402,3 +449,144 @@ void UStatsComponent::CleanupExpiredModifiers()
 	}
 }
 
+
+float UStatsComponent::ModifyStatValue(const FGameplayTag& StatTag, float Delta)
+{
+	if (GetOwnerRole() != ROLE_Authority)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ModifyStatValue called on non-authority. Tag: %s"), 
+			*StatTag.ToString());
+		return 0.0f;
+	}
+
+	if (!StatTag.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("ModifyStatValue called with invalid StatTag"));
+		return 0.0f;
+	}
+
+	float CurrentValue = GetStatValue(StatTag);
+	float MaxValue = GetMaxStatValue(StatTag);
+	float NewValue = CurrentValue + Delta;
+	float ClampedValue = FMath::Clamp(NewValue, 0.0f, MaxValue);
+	
+	SetStatValue(StatTag, ClampedValue);
+	float ActualDelta = ClampedValue - CurrentValue;
+
+	// 로그 (Verbose는 성능에 영향 없음)
+	UE_LOG(LogTemp, VeryVerbose, TEXT("ModifyStatValue - Tag: %s, Delta: %.2f, Actual: %.2f, Current: %.2f -> %.2f"), 
+		*StatTag.ToString(), Delta, ActualDelta, CurrentValue, ClampedValue);
+
+	return ActualDelta;
+}
+
+float UStatsComponent::ModifyStatByPercentage(const FGameplayTag& StatTag, float Percentage)
+{
+	if (GetOwnerRole() != ROLE_Authority)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ModifyStatByPercentage called on non-authority. Tag: %s"), 
+			*StatTag.ToString());
+		return 0.0f;
+	}
+
+	if (!StatTag.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("ModifyStatByPercentage called with invalid StatTag"));
+		return 0.0f;
+	}
+
+	// 최대값 기준으로 변경량 계산
+	float MaxValue = GetMaxStatValue(StatTag);
+	float Delta = MaxValue * Percentage;
+
+	float ActualDelta = ModifyStatValue(StatTag, Delta);
+
+	UE_LOG(LogTemp, Verbose, TEXT("ModifyStatByPercentage - Tag: %s, Percentage: %.2f%%, MaxValue: %.2f, Delta: %.2f, Actual: %.2f"), 
+		*StatTag.ToString(), Percentage * 100.0f, MaxValue, Delta, ActualDelta);
+
+	return ActualDelta;
+}
+
+void UStatsComponent::RestoreStatToMax(const FGameplayTag& StatTag)
+{
+	if (GetOwnerRole() != ROLE_Authority)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("RestoreStatToMax called on non-authority. Tag: %s"), 
+			*StatTag.ToString());
+		return;
+	}
+
+	if (!StatTag.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("RestoreStatToMax called with invalid StatTag"));
+		return;
+	}
+
+	float MaxValue = GetMaxStatValue(StatTag);
+	
+	if (MaxValue <= 0.0f)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("RestoreStatToMax - MaxValue is 0 or negative. Tag: %s"), 
+			*StatTag.ToString());
+		return;
+	}
+
+	SetStatValue(StatTag, MaxValue);
+
+	UE_LOG(LogTemp, Log, TEXT("RestoreStatToMax - Tag: %s restored to %.2f"), 
+		*StatTag.ToString(), MaxValue);
+}
+
+void UStatsComponent::RestoreMultipleStatsToMax(const TArray<FGameplayTag>& StatTags)
+{
+	if (GetOwnerRole() != ROLE_Authority)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("RestoreMultipleStatsToMax called on non-authority"));
+		return;
+	}
+
+	for (const FGameplayTag& StatTag : StatTags)
+	{
+		if (StatTag.IsValid())
+		{
+			RestoreStatToMax(StatTag);
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("RestoreMultipleStatsToMax - Restored %d stats"), StatTags.Num());
+}
+
+bool UStatsComponent::IsStatBelowThreshold(const FGameplayTag& StatTag, float Threshold) const
+{
+	if (!StatTag.IsValid())
+	{
+		return false;
+	}
+
+	float Percentage = GetStatPercentage(StatTag);
+	return Percentage <= Threshold;
+}
+
+bool UStatsComponent::IsStatFull(const FGameplayTag& StatTag) const
+{
+	if (!StatTag.IsValid())
+	{
+		return false;
+	}
+
+	float CurrentValue = GetStatValue(StatTag);
+	float MaxValue = GetMaxStatValue(StatTag);
+	
+	return FMath::IsNearlyEqual(CurrentValue, MaxValue, 0.01f);
+}
+
+bool UStatsComponent::IsStatEmpty(const FGameplayTag& StatTag) const
+{
+	if (!StatTag.IsValid())
+	{
+		return false;
+	}
+
+	float CurrentValue = GetStatValue(StatTag);
+	return FMath::IsNearlyZero(CurrentValue, 0.01f);
+}
